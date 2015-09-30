@@ -3,105 +3,149 @@
 import time
 import requests
 import sys
-
-server_names = ['platon', 'archimedes']
-server_ids =[]
-
-isDownloading = False
-isUploading = False
-isSTAvailable = False
-
-def request_local_completion():
-    c = requests.get('http://localhost:8384/rest/db/status?folder=default')
-    return c.json()["inSyncFiles"], c.json()["globalFiles"],  c.json()["inSyncBytes"], c.json()["globalBytes"]
-
-def request_remote_completion(devid):
-    c = requests.get('http://localhost:8384/rest/db/completion?device='+devid+'&folder=default')
-    return c.json()["completion"]   
-
-while True:
-    try:
-        c = requests.get('http://localhost:8384/rest/system/config')
-        devices = c.json()["devices"]
-        a,b,c,d= request_local_completion()
-        isSTAvailable = True
-        break
-    except:
-        isSTAvailable = False
-        print("No response from Syncthing 1")
-        time.sleep(3)
-
-id_dict = {}
-for a in devices:
-    id_dict[a["deviceID"]] =  a['name']
-
-if any([not (a in id_dict.values()) for a in server_names]):
-    print("Some provided server names are wrong.")
-    sys.exit()
-if any([not (a in id_dict.keys()) for a in server_ids]):
-    print("Some provided server ids are wrong.")
-    sys.exit()
-
-if not server_names and not server_ids: 
-    server_ids = id_dict.keys()
-else:  
-    server_ids = [a for a in id_dict.keys() if (id_dict[a] in server_names or a in server_ids)]
+import gi
+from gi.repository import Gtk, GObject
+import threading
 
 
-server_completion = {}
-while True:
-#    try:
-        c = requests.get('http://localhost:8384/rest/system/connections')
-        connected_ids = list(c.json()["connections"].keys())
-        connected_server_ids = [s for s in server_ids if s in connected_ids]
+class STDetective(threading.Thread):
+    def __init__(self, icon):
+        super(STDetective, self).__init__()
+        self.icon = icon
+        self.quit = False
+        self.server_names = ['platon', 'archimedes']
+        self.server_ids =[]
 
-        for s in connected_server_ids: server_completion[s] =  request_remote_completion(s)
-        if connected_server_ids: 
-            isSTAvailable = True
-            break
-        time.sleep(3)
-    #~ except:
-        #~ isSTAvailable = False
-        #~ print("No response from Syncthing 2")
-        #~ time.sleep(3)
+        self.isDownloading = False
+        self.isUploading = False
+        self.isSTAvailable = False
 
-if not a is  b or not c is  d: isDownloading = True
-if all((not p == 100) for p in server_completion.values()): isUploading = True
+        while True:
+            try:
+                c = requests.get('http://localhost:8384/rest/system/config')
+                self.devices = c.json()["devices"]
+                a,b,c,d= self.request_local_completion()
+                self.isSTAvailable = True
+                break
+            except:
+                self.isSTAvailable = False
+                GObject.idle_add(self.update_icon)
+                time.sleep(3)
 
-print(server_ids)
-print(connected_ids)
+        self.id_dict = {}
+        for a in self.devices:
+            self.id_dict[a["deviceID"]] =  a['name']
 
-next_event = 1
+        if any([not (a in self.id_dict.values()) for a in self.server_names]):
+            print("Some provided server names are wrong.")
+            sys.exit()
+        if any([not (a in id_dict.keys()) for a in self.server_ids]):
+            print("Some provided server ids are wrong.")
+            sys.exit()
 
-while True:
-    try:
-        c = requests.get('http://localhost:8384/rest/events?since='+str(next_event))
-        events = c.json()
-        isSTAvailable = True
-    except:
-        isSTAvailable = False
-        print("No response from Syncthing 3 "+'http://localhost:8384/rest/events?since='+str(next_event))
-        time.sleep(3)
-        continue
-    for v in events:
-        print(v["type"])
-        if v["type"] == "LocalIndexUpdated": isUploading = True
-        if v["type"] == "RemoteIndexUpdated": isDownloading = True
-        if str(v["type"]) == "FolderSummary": 
-            w = v["data"]["summary"]
-            a,b,c,d = w["inSyncFiles"], w["globalFiles"],  w["inSyncBytes"], w["globalBytes"]
-            print([a,b,c,d])
-            if not a == b or not c == d: isDownloading = True
-            else: 
-                isDownloading = False
-        if v["type"] == "FolderCompletion":
-            if v["data"]["device"] in connected_server_ids: 
-                server_completion[v["data"]["device"]] = v["data"]["completion"]
-        if all((not p == 100) for p in server_completion.values()): isUploading = True
-        else: isUploading = False
-    print([isSTAvailable,isUploading, isDownloading])
-    next_event = events[len(events)-1]["id"]
-    print(next_event)
+        if not self.server_names and not self.server_ids: 
+            self.server_ids = self.id_dict.keys()
+        else:  
+            self.server_ids = [a for a in self.id_dict.keys() if (self.id_dict[a] in self.server_names or a in self.server_ids)]
+
+
+        self.server_completion = {}
+        while True:
+            try:
+                c = requests.get('http://localhost:8384/rest/system/connections')
+                self.connected_ids = list(c.json()["connections"].keys())
+                self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
+
+                for s in self.connected_server_ids: self.server_completion[s] =  self.request_remote_completion(s)
+                if self.connected_server_ids: 
+                    self.isSTAvailable = True
+                    break
+                time.sleep(3)
+            except:
+                self.isSTAvailable = False
+                GObject.idle_add(self.update_icon)
+                time.sleep(3)
+
+        if not a is  b or not c is  d: self.isDownloading = True
+        if any((not p == 100) for p in self.server_completion.values()): self.isUploading = True
+        GObject.idle_add(self.update_icon)
+
+
+    def update_icon(self):
+        #~ GObject.idle_add(self.update_label, counter)
+        #print([len(self.connected_server_ids),self.isSTAvailable,self.isUploading, self.isDownloading])
+        self.icon.set_tooltip_text(str([len(self.connected_server_ids),self.isSTAvailable,self.isUploading, self.isDownloading]))
+
+        return False
+
+    def request_local_completion(self):
+        c = requests.get('http://localhost:8384/rest/db/status?folder=default')
+        return c.json()["inSyncFiles"], c.json()["globalFiles"],  c.json()["inSyncBytes"], c.json()["globalBytes"]
+
+    def request_remote_completion(self,devid):
+        c = requests.get('http://localhost:8384/rest/db/completion?device='+devid+'&folder=default')
+        return c.json()["completion"]   
+
+
+    def run(self):
+        next_event=1
+        while not self.quit:
+            try:
+                c = requests.get('http://localhost:8384/rest/system/connections')
+                self.connected_ids = list(c.json()["connections"].keys())
+                self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
+
+                c = requests.get('http://localhost:8384/rest/events?since='+str(next_event))
+                events = c.json()
+                self.isSTAvailable = True
+            except:
+                self.isSTAvailable = False
+                GObject.idle_add(self.update_icon)
+                time.sleep(3)
+                continue
+            for v in events:
+                print(v["type"])
+                if v["type"] == "LocalIndexUpdated": self.isUploading = True
+                if v["type"] == "RemoteIndexUpdated": self.isDownloading = True
+                if str(v["type"]) == "FolderSummary": 
+                    w = v["data"]["summary"]
+                    a,b,c,d = w["inSyncFiles"], w["globalFiles"],  w["inSyncBytes"], w["globalBytes"]
+                    if not a == b or not c == d: isDownloading = True
+                    else: 
+                        self.isDownloading = False
+                if v["type"] == "FolderCompletion":
+                    if v["data"]["device"] in self.connected_server_ids: 
+                        self.server_completion[v["data"]["device"]] = v["data"]["completion"]
+                if any((not p == 100) for p in self.server_completion.values()): self.isUploading = True
+                else: self.isUploading = False
+            GObject.idle_add(self.update_icon)
+            next_event = events[len(events)-1]["id"]
+
+
+def on_left_click(event):
+    Gtk.main_quit()
+
+
+GObject.threads_init()
+
+icon = Gtk.StatusIcon()
+#icon.set_from_file("/home/luke/python/stic/bipolar-ball.gif")
+#~ icon.connect('popup-menu', on_right_click)
+icon.connect('activate', on_left_click)
+icon.set_has_tooltip(True)
+
+t = STDetective(icon)
+t.start()
+
+Gtk.main()
+t.quit = True
+
+
+
+
+
+
+
 
 
 #~ loop with breaks of 5s to get
