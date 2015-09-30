@@ -9,16 +9,14 @@ server_ids =[]
 
 isDownloading = False
 isUploading = False
-isBusy = True  
 isSTAvailable = False
-#isServerPresent = False 
 
 def request_local_completion():
     c = requests.get('http://localhost:8384/rest/db/status?folder=default')
     return c.json()["inSyncFiles"], c.json()["globalFiles"],  c.json()["inSyncBytes"], c.json()["globalBytes"]
 
 def request_remote_completion(devid):
-    c = requests.get('http://localhost:8384/rest/db/completion='+devid+'?folder=default')
+    c = requests.get('http://localhost:8384/rest/db/completion?device='+devid+'&folder=default')
     return c.json()["completion"]   
 
 while True:
@@ -30,7 +28,7 @@ while True:
         break
     except:
         isSTAvailable = False
-        print("No response from Syncthing")
+        print("No response from Syncthing 1")
         time.sleep(3)
 
 id_dict = {}
@@ -52,27 +50,58 @@ else:
 
 server_completion = {}
 while True:
-    Try:
+#    try:
         c = requests.get('http://localhost:8384/rest/system/connections')
         connected_ids = list(c.json()["connections"].keys())
         connected_server_ids = [s for s in server_ids if s in connected_ids]
 
         for s in connected_server_ids: server_completion[s] =  request_remote_completion(s)
-        if connected_server_ids: break
+        if connected_server_ids: 
+            isSTAvailable = True
+            break
         time.sleep(3)
-    Except:
-        isSTAvailable = False
-        print("No response from Syncthing")
-        time.sleep(3)
+    #~ except:
+        #~ isSTAvailable = False
+        #~ print("No response from Syncthing 2")
+        #~ time.sleep(3)
 
-if a is not b or c is not d: isDownloading = True
-if all((p is not 100) for p in server_completion.values()): isUploading = True
+if not a is  b or not c is  d: isDownloading = True
+if all((not p == 100) for p in server_completion.values()): isUploading = True
 
 print(server_ids)
 print(connected_ids)
 
-last_event = -1
+next_event = 1
 
+while True:
+    try:
+        c = requests.get('http://localhost:8384/rest/events?since='+str(next_event))
+        events = c.json()
+        isSTAvailable = True
+    except:
+        isSTAvailable = False
+        print("No response from Syncthing 3 "+'http://localhost:8384/rest/events?since='+str(next_event))
+        time.sleep(3)
+        continue
+    for v in events:
+        print(v["type"])
+        if v["type"] == "LocalIndexUpdated": isUploading = True
+        if v["type"] == "RemoteIndexUpdated": isDownloading = True
+        if str(v["type"]) == "FolderSummary": 
+            w = v["data"]["summary"]
+            a,b,c,d = w["inSyncFiles"], w["globalFiles"],  w["inSyncBytes"], w["globalBytes"]
+            print([a,b,c,d])
+            if not a == b or not c == d: isDownloading = True
+            else: 
+                isDownloading = False
+        if v["type"] == "FolderCompletion":
+            if v["data"]["device"] in connected_server_ids: 
+                server_completion[v["data"]["device"]] = v["data"]["completion"]
+        if all((not p == 100) for p in server_completion.values()): isUploading = True
+        else: isUploading = False
+    print([isSTAvailable,isUploading, isDownloading])
+    next_event = events[len(events)-1]["id"]
+    print(next_event)
 
 
 #~ loop with breaks of 5s to get
