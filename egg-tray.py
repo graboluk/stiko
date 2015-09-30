@@ -47,7 +47,8 @@ def on_left_click(event):
   message("Status Icon Left Clicked")
  
 if __name__ == '__main__':
-  icon = gtk.status_icon_new_from_stock(gtk.STOCK_ABOUT)
+  #icon = gtk.status_icon_new_from_stock(gtk.STOCK_ABOUT)
+  icon = gtk.status_icon_new_from_file("/home/luke/python/stic/bipolar-ball.gif")
   icon.connect('popup-menu', on_right_click)
   icon.connect('activate', on_left_click)
   icon.set_tooltip_text("DUPA\n")
