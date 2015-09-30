@@ -3,8 +3,7 @@
 import time
 import requests
 import sys
-import gi
-from gi.repository import Gtk, GObject
+from gi.repository import Gtk, GObject, GdkPixbuf
 import threading
 
 
@@ -122,17 +121,27 @@ class STDetective(threading.Thread):
             next_event = events[len(events)-1]["id"]
 
 
-def on_left_click(event):
+def on_left_click(event, icon):
+    icon.set_visible(False)
     Gtk.main_quit()
 
 
 GObject.threads_init()
 
+px_good = GdkPixbuf.Pixbuf.new_from_file('icon-red.png')
+#px_good = px_good.add_alpha(True,255,255,255)
+
 icon = Gtk.StatusIcon()
-#icon.set_from_file("/home/luke/python/stic/bipolar-ball.gif")
+icon.set_from_pixbuf(px_good)
 #~ icon.connect('popup-menu', on_right_click)
-icon.connect('activate', on_left_click)
+icon.connect('activate', on_left_click,icon)
 icon.set_has_tooltip(True)
+
+def  update_icon_watchdog():
+    icon.set_tooltip_text("HAHA!")
+    return True
+
+GObject.timeout_add_seconds(1, update_icon_watchdog)
 
 t = STDetective(icon)
 t.start()
