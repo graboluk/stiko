@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 import time
 import requests
 import sys
@@ -7,18 +8,28 @@ server_names = ['platon', 'archimedes']
 server_ids =[]
 
 isDownloading = False
-isUploading = False  
-isSTAvailable = False 
-isServerPresent = False 
+isUploading = False
+isBusy = True  
+isSTAvailable = False
+#isServerPresent = False 
+
+def request_local_completion():
+    c = requests.get('http://localhost:8384/rest/db/status?folder=default')
+    return c.json()["inSyncFiles"], c.json()["globalFiles"],  c.json()["inSyncBytes"], c.json()["globalBytes"]
+
+def request_remote_completion(devid):
+    c = requests.get('http://localhost:8384/rest/db/completion='+devid+'?folder=default')
+    return c.json()["completion"]   
 
 while True:
     try:
         c = requests.get('http://localhost:8384/rest/system/config')
         devices = c.json()["devices"]
-        c = requests.get('http://localhost:8384/rest/system/connections')
-        connected_ids = list(c.json()["connections"].keys())
+        a,b,c,d= request_local_completion()
+        isSTAvailable = True
         break
     except:
+        isSTAvailable = False
         print("No response from Syncthing")
         time.sleep(3)
 
@@ -26,18 +37,43 @@ id_dict = {}
 for a in devices:
     id_dict[a["deviceID"]] =  a['name']
 
-if not server_ids: 
-    if not server_names: server_ids = id_dict.keys()
-    else:  server_ids = [a for a in id_dict.keys() if id_dict[a] in server_names]
-
-if not server_ids or any([not (a in id_dict.keys()) for a in server_ids]): 
-    print("All provided server names/server ids are wrong.")
+if any([not (a in id_dict.values()) for a in server_names]):
+    print("Some provided server names are wrong.")
+    sys.exit()
+if any([not (a in id_dict.keys()) for a in server_ids]):
+    print("Some provided server ids are wrong.")
     sys.exit()
 
+if not server_names and not server_ids: 
+    server_ids = id_dict.keys()
+else:  
+    server_ids = [a for a in id_dict.keys() if (id_dict[a] in server_names or a in server_ids)]
 
+
+server_completion = {}
+while True:
+    Try:
+        c = requests.get('http://localhost:8384/rest/system/connections')
+        connected_ids = list(c.json()["connections"].keys())
+        connected_server_ids = [s for s in server_ids if s in connected_ids]
+
+        for s in connected_server_ids: server_completion[s] =  request_remote_completion(s)
+        if connected_server_ids: break
+        time.sleep(3)
+    Except:
+        isSTAvailable = False
+        print("No response from Syncthing")
+        time.sleep(3)
+
+if a is not b or c is not d: isDownloading = True
+if all((p is not 100) for p in server_completion.values()): isUploading = True
 
 print(server_ids)
 print(connected_ids)
+
+last_event = -1
+
+
 
 #~ loop with breaks of 5s to get
     #~ foldercompletion, 
