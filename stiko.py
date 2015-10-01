@@ -180,7 +180,6 @@ parser = argparse.ArgumentParser(description = 'This is stiko, an icon for synct
 parser.add_argument('--servers', nargs = '+', default ='',help = 'List of names of devices treated as servers, space separated. If empty then all connected devices will be treated as servers.',metavar='')
 parser.add_argument('--icons',  default ='',help = 'Path to the directory with icons. If empty then use this script\'s directory ('+os.path.dirname(os.path.abspath(__file__))+')', action="store", metavar='')
 args = parser.parse_args(sys.argv[1:])
-
 iconDir = os.path.dirname(__file__) if not args.icons else args.icons[0]
 
 GObject.threads_init()
