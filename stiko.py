@@ -22,7 +22,6 @@ class STDetective(threading.Thread):
         self.isUploading = False
         self.isSTAvailable = False
         self.Busy = False   #for controllling animation only
-        print("debug2")
         try:
             self.px_good = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-ok.png'))
             self.px_noST = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-notok.png'))
@@ -30,7 +29,7 @@ class STDetective(threading.Thread):
             self.px_sync = [GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync0.png')), 
                         GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync1.png'))]
         except:
-            raise
+            #~ raise
             print("I coudn't open icon files.")
             sys.exit()            
 
@@ -43,11 +42,10 @@ class STDetective(threading.Thread):
                 self.isSTAvailable = True
                 break
             except:
-                raise
+                #~ raise
                 self.isSTAvailable = False
                 GObject.idle_add(self.update_icon)
                 time.sleep(3)
-        print("debug3")
         self.id_dict = {}
         for a in self.devices:
             self.id_dict[a["deviceID"]] =  a['name']
@@ -64,7 +62,6 @@ class STDetective(threading.Thread):
         else:  
             self.server_ids = [a for a in self.id_dict.keys() if (self.id_dict[a] in self.server_names or a in self.server_ids)]
 
-        print("debug4")
         self.server_completion = {}
 
         try:
@@ -75,12 +72,11 @@ class STDetective(threading.Thread):
             for s in self.connected_server_ids: self.server_completion[s] =  self.request_remote_completion(s)
             if self.connected_server_ids: self.isSTAvailable = True
         except:
-            raise
+            #~ raise
             self.isSTAvailable = False
 
         GObject.idle_add(self.update_icon)
 
-        print("debug1")
         if not a is  b or not c is  d: self.isDownloading = True
         if all((not p == 100) for p in self.server_completion.values()): self.isUploading = True
         GObject.idle_add(self.update_icon)
@@ -88,21 +84,27 @@ class STDetective(threading.Thread):
 
     def update_icon(self):
         #~ print("update icon")
-        self.icon.set_tooltip_text(str([len(self.connected_server_ids),self.isSTAvailable,self.isUploading, self.isDownloading]))
+        self.icon.set_tooltip_text(str([len(self.connected_server_ids),self.isSTAvailable,self.isUploading, self.isDownloading])+'\nyep')
         if not self.isSTAvailable: 
+            self.icon.set_tooltip_text("No contact with syncthing")
             icon.set_from_pixbuf(self.px_noST)
             self.Busy=False
             return False
         if not self.connected_server_ids:
+            self.icon.set_tooltip_text("No servers")
             icon.set_from_pixbuf(self.px_noServer)
             self.Busy=False
             return False
         if self.isDownloading or self.isUploading:
+            self.icon.set_tooltip_text(str(len(self.connected_server_ids))+" Server(s)"+
+                "\nDownloading..." if self.isDownloading else ''+
+                "\nUploading..." if self.isUploading else '')
             icon.set_from_pixbuf(self.px_sync[0])
             self.animation_counter = 1
             if not self.Busy: GObject.timeout_add(800, self.update_icon_animate)
             self.Busy=True
         else:
+            self.icon.set_tooltip_text(str(len(self.connected_server_ids))+" Server(s)"+ "\nUp to Date")            
             icon.set_from_pixbuf(self.px_good)
             self.Busy=False
         return False
@@ -139,13 +141,13 @@ class STDetective(threading.Thread):
                 events = c.json()
                 self.isSTAvailable = True
             except:
-                raise
+                #~ raise
                 self.isSTAvailable = False
                 GObject.idle_add(self.update_icon)
                 time.sleep(3)
                 continue
             for v in events:
-                print(v["type"])
+                #~ print(v["type"])
                 if v["type"] == "LocalIndexUpdated": 
                     self.isUploading = True
 
@@ -174,14 +176,12 @@ def on_left_click(event, icon):
     Gtk.main_quit()
 
 
-parser = argparse.ArgumentParser(description = 'stiko, an icon for syncthing',epilog='', usage='stiko.py [options]')
-parser.add_argument('--servers', nargs = '+', default ='',help = 'Names of devices treated as servers')
-parser.add_argument('--icons', nargs = '+', default ='',help = 'Path to the directory with icons')
+parser = argparse.ArgumentParser(description = 'This is stiko, an icon for syncthing.',epilog='', usage='stiko.py [options]')
+parser.add_argument('--servers', nargs = '+', default ='',help = 'List of names of devices treated as servers, space separated. If empty then all connected devices will be treated as servers.',metavar='')
+parser.add_argument('--icons',  default ='',help = 'Path to the directory with icons. If empty then use this script\'s directory ('+os.path.dirname(os.path.abspath(__file__))+')', action="store", metavar='')
 args = parser.parse_args(sys.argv[1:])
-print(args.servers)
 
 iconDir = os.path.dirname(__file__) if not args.icons else args.icons[0]
-
 
 GObject.threads_init()
 
