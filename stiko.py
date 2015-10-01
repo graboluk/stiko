@@ -19,6 +19,13 @@ class STDetective(threading.Thread):
         self.isUploading = False
         self.isSTAvailable = False
 
+        self.px_good = GdkPixbuf.Pixbuf.new_from_file('icon-ok.png')
+        self.px_noST = GdkPixbuf.Pixbuf.new_from_file('icon-red.png')
+        self.px_noServer = GdkPixbuf.Pixbuf.new_from_file('icon-dark.png')
+        self.px_sync = [GdkPixbuf.Pixbuf.new_from_file('dsync0.png'), 
+                    GdkPixbuf.Pixbuf.new_from_file('dsync1.png')]
+
+        self.animation_counter = 1
         while True:
             try:
                 c = requests.get('http://localhost:8384/rest/system/config')
@@ -66,16 +73,39 @@ class STDetective(threading.Thread):
                 time.sleep(3)
 
         if not a is  b or not c is  d: self.isDownloading = True
-        if any((not p == 100) for p in self.server_completion.values()): self.isUploading = True
+        if all((not p == 100) for p in self.server_completion.values()): self.isUploading = True
         GObject.idle_add(self.update_icon)
 
 
     def update_icon(self):
-        #~ GObject.idle_add(self.update_label, counter)
-        #print([len(self.connected_server_ids),self.isSTAvailable,self.isUploading, self.isDownloading])
         self.icon.set_tooltip_text(str([len(self.connected_server_ids),self.isSTAvailable,self.isUploading, self.isDownloading]))
-
+        if not self.isSTAvailable: 
+            icon.set_from_pixbuf(self.px_noST)
+            self.Busy=False
+            return False
+        if not self.connected_server_ids:
+            icon.set_from_pixbuf(self.px_noServer)
+            self.Busy=False
+            return False
+        if self.isDownloading or self.isUploading:
+            icon.set_from_pixbuf(self.px_sync[0])
+            self.animation_counter = 1
+            if not self.Busy: GObject.timeout_add(800, self.update_icon_animate)
+            self.Busy=True
+        else:
+            icon.set_from_pixbuf(self.px_good)
+            self.Busy=False
         return False
+    
+    def  update_icon_animate(self):
+        if (t.isDownloading or t.isUploading) and t.isSTAvailable and t.connected_server_ids:
+            icon.set_from_pixbuf(self.px_sync[self.animation_counter])
+            self.animation_counter = (self.animation_counter + 1) % 2
+            return True
+        else: 
+            self.animation_counter = 1
+            return False
+        
 
     def request_local_completion(self):
         c = requests.get('http://localhost:8384/rest/db/status?folder=default')
@@ -104,20 +134,26 @@ class STDetective(threading.Thread):
                 continue
             for v in events:
                 print(v["type"])
-                if v["type"] == "LocalIndexUpdated": self.isUploading = True
-                if v["type"] == "RemoteIndexUpdated": self.isDownloading = True
-                if str(v["type"]) == "FolderSummary": 
+                if v["type"] == "LocalIndexUpdated": 
+                    self.isUploading = True
+
+                elif v["type"] == "RemoteIndexUpdated": 
+                    self.isDownloading = True
+                elif str(v["type"]) == "FolderSummary": 
                     w = v["data"]["summary"]
                     a,b,c,d = w["inSyncFiles"], w["globalFiles"],  w["inSyncBytes"], w["globalBytes"]
                     if not a == b or not c == d: isDownloading = True
                     else: 
                         self.isDownloading = False
+                GObject.idle_add(self.update_icon)
+
                 if v["type"] == "FolderCompletion":
                     if v["data"]["device"] in self.connected_server_ids: 
                         self.server_completion[v["data"]["device"]] = v["data"]["completion"]
-                if any((not p == 100) for p in self.server_completion.values()): self.isUploading = True
-                else: self.isUploading = False
-            GObject.idle_add(self.update_icon)
+                    if all((not p == 100) for p in self.server_completion.values()): self.isUploading = True
+                    else: self.isUploading = False
+                GObject.idle_add(self.update_icon)
+
             next_event = events[len(events)-1]["id"]
 
 
@@ -128,74 +164,17 @@ def on_left_click(event, icon):
 
 GObject.threads_init()
 
-px_good = GdkPixbuf.Pixbuf.new_from_file('icon-red.png')
-#px_good = px_good.add_alpha(True,255,255,255)
-
 icon = Gtk.StatusIcon()
-icon.set_from_pixbuf(px_good)
-#~ icon.connect('popup-menu', on_right_click)
+t = STDetective(icon)
+
+icon.set_from_pixbuf(t.px_noServer)
 icon.connect('activate', on_left_click,icon)
 icon.set_has_tooltip(True)
 
-def  update_icon_watchdog():
-    icon.set_tooltip_text("HAHA!")
-    return True
-
-GObject.timeout_add_seconds(1, update_icon_watchdog)
-
-t = STDetective(icon)
 t.start()
 
 Gtk.main()
 t.quit = True
-
-
-
-
-
-
-
-
-
-#~ loop with breaks of 5s to get
-    #~ foldercompletion, 
-    #~ known hosts with keys, 
-    #~ connected-hosts
-#~ on success set isAnsweringST to true.
-
-
-#~ loop with breaks of 5s to get
-    #~ foldersummary for names in servernames \cap connected-hosts
-    #~ if at least one answers then set isServerPresent to True
-
-#~ Based on the foldersummaries and foldercompletions set isDownloading and isUploading
-
-#~ main loop
-    #~ get new events
-    #~ go through events
-        #~ if not isServerPresent then only look on connect/disconnect
-        #~ if IndexUpdated set isUploading or isDownloading true
-        #~ if foldersummaries of foldercopletions set isDownloading/ isUploading to true or false
-        #~ if connect/disconnect -> update list of servers.
-
-    #~ if isUploading of isDownloading for some time, say 3min, then query if any servers are present and reset isServerPresent.
-    
-    #~ if icon_state need be changed then 
-        #~ reset_icon
-        #~ save icon_state
-
-#~ -jesli nie moge sie polaczyc z syncthing to czekam dalej bo moze dopiero wystartowal?
-#~ -poza tym mozemy ominac RemoteIndexUpdated i LocalIndexUpdated, wiec na poczatek robimy query "FolderCompletion" oraz "FolderSummary" wszystkich serwerow (do momentu gdy zobaczymy jeden ktory ma FolderSummary "100".
-
-#~ -jesli widze "LocalIndexUpdated" po lokalnej zmianie, to mam pewnosc, ze ktos ma moja lokalna zmiane dopiero gdy widze "FolderCompletion" z completion=100
-
-#~ -jesli widze "RemoteIndexUpdated" to moge zaczac pytac o FolderSummary dopoki pokazuje, ze cos trzeba sciagnac, to ikonka pokazuje, ze konieczny download.
-
-#~ -co jakis czas trzeba patrzyc czy jestesmy z kimkolwiek polaczeni - jesli nie to rpzestajemy pokazywac cokolwiek.
-    #~ gdy nic sie nie dzieje to nie patrzymy
-    #~ gdy jestesmy w trakcie to patrzymy co powiedzmy 4s.
-
-#~ -jesli dostaniemy FolderSummary ktory pokazuje ze cos trzeba sciagnac to przechodzimy tak czy inaczej (niezaleznie czy widzialem RemoteIndexUpdated) w tryb "Downloading"
 
 #~ issues (why would it be better if syncthing did it): 
 #~ -this depends on seeing all "LocalIndexUdated". 
