@@ -3,6 +3,7 @@
 import time
 import requests
 import sys
+import os
 from gi.repository import Gtk, GObject, GdkPixbuf
 import threading
 
@@ -11,7 +12,7 @@ class STDetective(threading.Thread):
     def __init__(self, icon):
         super(STDetective, self).__init__()
         self.icon = icon
-        self.quit = False
+        self.isOver = False #flag for terminating when icon terminated
 
         self.server_names = ['platon', 'archimedes']
         self.server_ids =[]
@@ -21,11 +22,12 @@ class STDetective(threading.Thread):
         self.isSTAvailable = False
         self.Busy = False   #for controllling animation only
 
-        self.px_good = GdkPixbuf.Pixbuf.new_from_file('icon-ok.png')
-        self.px_noST = GdkPixbuf.Pixbuf.new_from_file('icon-red.png')
-        self.px_noServer = GdkPixbuf.Pixbuf.new_from_file('icon-dark.png')
-        self.px_sync = [GdkPixbuf.Pixbuf.new_from_file('dsync0.png'), 
-                    GdkPixbuf.Pixbuf.new_from_file('dsync1.png')]
+        iconDir = os.path.dirname(__file__)
+        self.px_good = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-ok.png'))
+        self.px_noST = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-notok.png'))
+        self.px_noServer = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-inactive.png'))
+        self.px_sync = [GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync0.png')), 
+                    GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync1.png'))]
 
         self.animation_counter = 1
         while True:
@@ -120,7 +122,7 @@ class STDetective(threading.Thread):
 
     def run(self):
         next_event=1
-        while not self.quit:
+        while not self.isOver:
             try:
                 c = requests.get('http://localhost:8384/rest/system/connections')
                 self.connected_ids = list(c.json()["connections"].keys())
@@ -176,7 +178,7 @@ icon.set_has_tooltip(True)
 t.start()
 
 Gtk.main()
-t.quit = True
+t.isOver = True
 
 #~ issues (why would it be better if syncthing did it): 
 #~ -this depends on seeing all "LocalIndexUdated". 
