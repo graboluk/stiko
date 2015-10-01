@@ -12,12 +12,14 @@ class STDetective(threading.Thread):
         super(STDetective, self).__init__()
         self.icon = icon
         self.quit = False
+
         self.server_names = ['platon', 'archimedes']
         self.server_ids =[]
 
         self.isDownloading = False
         self.isUploading = False
         self.isSTAvailable = False
+        self.Busy = False   #for controllling animation only
 
         self.px_good = GdkPixbuf.Pixbuf.new_from_file('icon-ok.png')
         self.px_noST = GdkPixbuf.Pixbuf.new_from_file('icon-red.png')
@@ -133,7 +135,7 @@ class STDetective(threading.Thread):
                 time.sleep(3)
                 continue
             for v in events:
-                print(v["type"])
+                #print(v["type"])
                 if v["type"] == "LocalIndexUpdated": 
                     self.isUploading = True
 
