@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.4
 
 import time
 import requests
@@ -6,13 +6,15 @@ import sys
 import os
 import argparse
 from gi.repository import Gtk, GObject, GdkPixbuf
+from gi import require_version 
+require_version("Gtk", "3.0")
 import threading
 
 
 class STDetective(threading.Thread):
-    def __init__(self, icon,iconDir,servers):
+    def __init__(self, gui, servers):
         super(STDetective, self).__init__()
-        self.icon = icon
+        self.gui = gui
         self.isOver = False #flag for terminating when icon terminated
 
         self.server_names = servers
@@ -21,19 +23,7 @@ class STDetective(threading.Thread):
         self.isDownloading = False
         self.isUploading = False
         self.isSTAvailable = False
-        self.Busy = False   #for controllling animation only
-        try:
-            self.px_good = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-ok.png'))
-            self.px_noST = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-notok.png'))
-            self.px_noServer = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-inactive.png'))
-            self.px_sync = [GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync0.png')), 
-                        GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync1.png'))]
-        except:
-            #~ raise
-            print("I coudn't open icon files.")
-            sys.exit()            
 
-        self.animation_counter = 1
         while True:
             try:
                 c = requests.get('http://localhost:8384/rest/system/config')
@@ -44,7 +34,7 @@ class STDetective(threading.Thread):
             except:
                 #~ raise
                 self.isSTAvailable = False
-                GObject.idle_add(self.update_icon)
+                self.gui.update_icon() 
                 time.sleep(3)
         self.id_dict = {}
         for a in self.devices:
@@ -74,51 +64,14 @@ class STDetective(threading.Thread):
         except:
             #~ raise
             self.isSTAvailable = False
-
-        GObject.idle_add(self.update_icon)
+        
+        GObject.idle_add(lambda :self.gui.update_icon(self)) 
 
         if not a is  b or not c is  d: self.isDownloading = True
         if all((not p == 100) for p in self.server_completion.values()): self.isUploading = True
-        GObject.idle_add(self.update_icon)
+        GObject.idle_add(lambda :self.gui.update_icon(self)) 
 
 
-    def update_icon(self):
-        #~ print("update icon")
-        self.icon.set_tooltip_text(str([len(self.connected_server_ids),self.isSTAvailable,self.isUploading, self.isDownloading])+'\nyep')
-        if not self.isSTAvailable: 
-            self.icon.set_tooltip_text("No contact with syncthing")
-            icon.set_from_pixbuf(self.px_noST)
-            self.Busy=False
-            return False
-        if not self.connected_server_ids:
-            self.icon.set_tooltip_text("No servers")
-            icon.set_from_pixbuf(self.px_noServer)
-            self.Busy=False
-            return False
-        if self.isDownloading or self.isUploading:
-            self.icon.set_tooltip_text(str(len(self.connected_server_ids))+" Server(s)"+
-                "\nDownloading..." if self.isDownloading else ''+
-                "\nUploading..." if self.isUploading else '')
-            icon.set_from_pixbuf(self.px_sync[0])
-            self.animation_counter = 1
-            if not self.Busy: GObject.timeout_add(800, self.update_icon_animate)
-            self.Busy=True
-        else:
-            self.icon.set_tooltip_text(str(len(self.connected_server_ids))+" Server(s)"+ "\nUp to Date")            
-            icon.set_from_pixbuf(self.px_good)
-            self.Busy=False
-        return False
-    
-    def  update_icon_animate(self):
-        #~ print("update icon animate")
-        if (t.isDownloading or t.isUploading) and t.isSTAvailable and t.connected_server_ids:
-            icon.set_from_pixbuf(self.px_sync[self.animation_counter])
-            self.animation_counter = (self.animation_counter + 1) % 2
-            return True
-        else: 
-            self.animation_counter = 1
-            return False
-        
 
     def request_local_completion(self):
         c = requests.get('http://localhost:8384/rest/db/status?folder=default')
@@ -143,7 +96,7 @@ class STDetective(threading.Thread):
             except:
                 #~ raise
                 self.isSTAvailable = False
-                GObject.idle_add(self.update_icon)
+                GObject.idle_add(lambda :self.gui.update_icon(self)) 
                 time.sleep(3)
                 continue
             for v in events:
@@ -159,21 +112,80 @@ class STDetective(threading.Thread):
                     if not a == b or not c == d: isDownloading = True
                     else: 
                         self.isDownloading = False
-                GObject.idle_add(self.update_icon)
+                GObject.idle_add(lambda :self.gui.update_icon(self)) 
 
                 if v["type"] == "FolderCompletion":
                     if v["data"]["device"] in self.connected_server_ids: 
                         self.server_completion[v["data"]["device"]] = v["data"]["completion"]
                     if all((not p == 100) for p in self.server_completion.values()): self.isUploading = True
                     else: self.isUploading = False
-                GObject.idle_add(self.update_icon)
+                GObject.idle_add(lambda :self.gui.update_icon(self)) 
 
             next_event = events[len(events)-1]["id"]
 
 
-def on_left_click(event, icon):
-    icon.set_visible(False)
-    Gtk.main_quit()
+class StikoGui(Gtk.StatusIcon):
+    def __init__ (self, iconDir):
+        super(StikoGui, self).__init__()
+
+        try:
+            self.px_good = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-ok.png'))
+            self.px_noST = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-notok.png'))
+            self.px_noServer = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-inactive.png'))
+            self.px_sync = [GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync0.png')), 
+                        GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync1.png'))]
+        except:
+            #~ raise
+            print("I coudn't open icon files.")
+            sys.exit()  
+
+        self.set_from_pixbuf(self.px_noServer)
+        self.connect('activate', self.on_left_click)
+        while Gtk.events_pending(): Gtk.main_iteration() 
+        
+        self.animation_counter = 0
+        self.isAnimated = False   #for controlling animation only
+
+    def on_left_click(event, icon):
+        icon.set_visible(False)
+        Gtk.main_quit()
+   
+    def update_icon(self,t):
+        if not t.isSTAvailable: 
+            self.set_tooltip_text("No contact with syncthing")
+            self.set_from_pixbuf(self.px_noST)
+            self.isAnimated=False
+            return False
+        if not t.connected_server_ids:
+            self.set_tooltip_text("No servers")
+            self.set_from_pixbuf(self.px_noServer)
+            self.isAnimated=False
+            return False
+        if t.isDownloading or t.isUploading:
+            self.set_tooltip_text(str(len(t.connected_server_ids))+" Server(s)"+
+                ("\nDownloading..." if t.isDownloading else '')+
+                ("\nUploading..." if t.isUploading else ''))
+            self.set_from_pixbuf(self.px_sync[0])
+            self.animation_counter = 1
+            if not self.isAnimated: GObject.timeout_add(800, self.update_icon_animate,t)
+            self.isAnimated=True
+        else:
+            self.set_tooltip_text(str(len(t.connected_server_ids))+" Server(s)"+ "\nUp to Date")            
+            self.set_from_pixbuf(self.px_good)
+            self.isAnimated=False
+        return False
+    
+    def update_icon_animate(self,t):
+        #~ print("update icon animate")
+        if (t.isDownloading or t.isUploading) and t.isSTAvailable and t.connected_server_ids:
+            self.set_from_pixbuf(self.px_sync[self.animation_counter])
+            self.animation_counter = (self.animation_counter + 1) % 2
+            return True
+        else:
+            #self.update_icon(t)
+            self.animation_counter = 0
+            return False
+        
 
 
 parser = argparse.ArgumentParser(description = 'This is stiko, an icon for syncthing.',epilog='', usage='stiko.py [options]')
@@ -184,24 +196,10 @@ iconDir = os.path.dirname(__file__) if not args.icons else args.icons[0]
 
 GObject.threads_init()
 
-icon = Gtk.StatusIcon()
-t = STDetective(icon,iconDir, args.servers)
+gui = StikoGui(iconDir)
 
-icon.set_from_pixbuf(t.px_noServer)
-icon.connect('activate', on_left_click,icon)
-icon.set_has_tooltip(True)
-
+t = STDetective(gui,args.servers)
 t.start()
 
 Gtk.main()
 t.isOver = True
-
-#~ issues (why would it be better if syncthing did it): 
-#~ -this depends on seeing all "LocalIndexUdated". 
-#~ -at the beginning we might miss something
-#~ -if webapp is part of st, why icon can't be - the same problems need to be solved.
-#~ -if st config changed ping time then this might not work
-
-#~ would be good if there was event "starting updating remote index", so that reactions are quicker?
-
-#~ -would be nice to have st feature to allow stopping upload to servers if at least one server has it. Or simply a rule as to whom to speak (like: if platon is present don't talk to archimedes)
