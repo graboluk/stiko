@@ -10,6 +10,7 @@ from gi.repository import Gtk, GObject, GdkPixbuf
 from gi import require_version 
 require_version("Gtk", "3.0")
 import threading
+import collections
 
 
 class STDetective(threading.Thread):
@@ -44,7 +45,11 @@ class STDetective(threading.Thread):
         self.pDlCheckTime = self.DlCheckTime
         self.pUlCheckTime = self.UlCheckTime
         
+        self.UlSpeeds = collections.deque(maxlen=5)#.extend([0,0,0,0,0])
+        self.DlSpeeds = collections.deque(maxlen=5)#.extend([0,0,0,0,0])
+
         self.QuickestServerID=''
+
 
         self.id_dict = {}
         for a in self.devices:
@@ -65,8 +70,9 @@ class STDetective(threading.Thread):
         self.server_completion = {}
 
         try:
-            c = requests.get('http://localhost:8384/rest/system/connections')
-            self.connected_ids = list(c.json()["connections"].keys())
+            self.pconnections = requests.get('http://localhost:8384/rest/system/connections').json()["connections"]
+            self.connections = self.pconnections
+            self.connected_ids = list(self.connections.keys())
             self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
 
             for s in self.connected_server_ids: self.server_completion[s] =  self.request_remote_completion(s)
@@ -96,6 +102,20 @@ class STDetective(threading.Thread):
         self.pUlCheckTime = self.UlCheckTime
         self.UlCheckTime = datetime.datetime.today() 
         self.update_ULState()
+
+        try:
+            self.pconnections = self.connections
+            self.connections = requests.get('http://localhost:8384/rest/system/connections').json()["connections"]
+        except:
+            self.isSTAvailable = False
+        
+        try:
+            byte_delta = self.connections[self.QuickestServerID]["outBytesTotal"] - self.pconnections[self.QuickestServerID]["outBytesTotal"]
+            time = datetime.datetime.strptime(self.connections[self.QuickestServerID]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
+            ptime = datetime.datetime.strptime(self.pconnections[self.QuickestServerID]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
+            self.UlSpeeds.append(round(byte_delta/((time-ptime).seconds*1000),0))
+        except:
+            self.UlSpeeds.append(0)
 
     def request_local_completion(self):
         c = requests.get('http://localhost:8384/rest/db/status?folder=default')
@@ -209,13 +229,18 @@ class StikoGui(Gtk.StatusIcon):
                 if not t.a==t.b:
                     info_str += "\nDownloading "+str(t.b-t.a)+" file" +('s (' if t.b-t.a>1 else ' (')+str(round((t.d-t.c)/1000000,2))+'MB)'
                 else:
-                    info_str += "\nChecking remote indices"
+                    info_str += "\nChecking indices"
 
             if t.isUploading:
                 if t.QuickestServerID:
-                    info_str += "\nUploading to "+t.id_dict[t.QuickestServerID] + ' ('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB)'
+                    info_str += "\nUploading to "+t.id_dict[t.QuickestServerID]
+                    info_str +=' ('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
+                    try:
+                        info_str +=' @'+ str(round(sum(list(t.UlSpeeds))/5,0))+'KB/s)'
+                    except:
+                        info_str +=')'
                 else:
-                    info_str += "\nChecking local indices"
+                    info_str += "\nUploading..."
 
             if not self.isAnimated: 
                 self.isAnimated = True
