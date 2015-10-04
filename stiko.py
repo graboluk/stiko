@@ -6,9 +6,9 @@ import sys
 import os
 import argparse
 import datetime
-from gi.repository import Gtk, GObject, GdkPixbuf
 from gi import require_version 
 require_version("Gtk", "3.0")
+from gi.repository import Gtk, GObject, GdkPixbuf
 import threading
 import collections
 
@@ -17,49 +17,53 @@ class STDetective(threading.Thread):
     def __init__(self, gui, servers):
         super(STDetective, self).__init__()
         self.gui = gui
-        self.isOver = False #flag for terminating this thread when icon terminates
+
+        #flag for terminating this thread when icon terminates
+        self.isOver = False 
 
         self.server_names = servers
         self.server_ids =[]
+        self.server_completion = {}
+        self.connections = {}
+        self.pconnections = {}
+        self.id_dict = {}
+
+        # current and previous inSyncFiles, globalFiles, inSyncBytes, globalBytes
+        self.a,self.b,self.c,self.d, self.pa,self.pb,self.pc,self.pd = [0,0,0,0,0,0,0,0]
 
         self.isDownloading = False
         self.isUploading = False
         self.isSTAvailable = False
-        
-        while True:
-            try:
-                c = requests.get('http://localhost:8384/rest/system/config')
-                self.devices = c.json()["devices"]
-                self.a,self.b,self.c,self.d= self.request_local_completion()
-                self.pa,self.pb,self.pc,self.pd= self.a,self.b,self.c,self.d #previous values, stored to calculate dl speed
-                self.isSTAvailable = True
-                break
-            except:
-                #~ raise
-                self.isSTAvailable = False
-                self.gui.update_icon(self) 
-                time.sleep(3)
 
         self.DlCheckTime = datetime.datetime.today()
         self.UlCheckTime = self.DlCheckTime
         self.pDlCheckTime = self.DlCheckTime
         self.pUlCheckTime = self.UlCheckTime
         
-        self.UlSpeeds = collections.deque(maxlen=5)#.extend([0,0,0,0,0])
-        self.DlSpeeds = collections.deque(maxlen=5)#.extend([0,0,0,0,0])
+        self.UlSpeeds = collections.deque(maxlen=5)
+        self.DlSpeeds = collections.deque(maxlen=5)
 
         self.QuickestServerID=''
+    
+        config = self.request_config()
+        while not self.isOver and not config:
+            time.sleep(3)
+            config = self.request_config()
+    
+        # A thread-safe way to demand gui updates. We do it here 
+        # because request_config() hopefully changed isSTAvailable to True
+        self.update_gui()
 
-
-        self.id_dict = {}
-        for a in self.devices:
+        for a in config["devices"]:
             self.id_dict[a["deviceID"]] =  a['name']
 
         if any([not (a in self.id_dict.values()) for a in self.server_names]):
             print("Some provided server names are wrong.")
+            Gtk.main_quit()
             sys.exit()
         if any([not (a in id_dict.keys()) for a in self.server_ids]):
             print("Some provided server ids are wrong.")
+            Gtk.main_quit()
             sys.exit()
 
         if not self.server_names and not self.server_ids: 
@@ -67,34 +71,38 @@ class STDetective(threading.Thread):
         else:  
             self.server_ids = [a for a in self.id_dict.keys() if (self.id_dict[a] in self.server_names or a in self.server_ids)]
 
-        self.server_completion = {}
+        self.get_base_state()
+        self.update_gui()
 
-        try:
-            self.pconnections = requests.get('http://localhost:8384/rest/system/connections').json()["connections"]
-            self.connections = self.pconnections
-            self.connected_ids = list(self.connections.keys())
-            self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
+    def get_base_state():
+        self.a,self.b,self.c,self.d = self.request_local_completion()
 
-            for s in self.connected_server_ids: self.server_completion[s] =  self.request_remote_completion(s)
-            if self.connected_server_ids: self.isSTAvailable = True
-        except:
-            #~ raise
-            self.isSTAvailable = False
-        
+        self.connections = request_connections()
+        self.connected_ids = list(self.connections.keys())
+        self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
+    
+        # the following call doesn't really belong here, but 
+        # the call afterwards can take long time, so better update gui now
+        self.update_gui()
+
+        self.server_completion = self.request_server_completion()
+
+        self.update_states()
+
+
+
+    def update_gui(self):
         GObject.idle_add(lambda :self.gui.update_icon(self)) 
-
-        if not self.a == self.b or not self.c == self.d: isDownloading = True
-        if all((not p == 100) for p in self.server_completion.values()): self.isUploading = True
-        GObject.idle_add(lambda :self.gui.update_icon(self)) 
-
 
     def DlCheck(self):
-        if not self.isDownloading or (datetime.datetime.today()-self.DlCheckTime).total_seconds() <2: return False
+        if (datetime.datetime.today()-self.DlCheckTime).total_seconds() <2: 
+            time.sleep(1)
+            return False
         self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
         self.a,self.b,self.c,self.d= self.request_local_completion()
         self.pDlCheckTime = self.DlCheckTime
         self.DlCheckTime = datetime.datetime.today() 
-        self.update_DLState()
+        self.update_states()
 
         self.DlSpeeds.append((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
 
@@ -104,7 +112,7 @@ class STDetective(threading.Thread):
         self.server_completion[self.QuickestServerID] = self.request_remote_completion(self.QuickestServerID)
         self.pUlCheckTime = self.UlCheckTime
         self.UlCheckTime = datetime.datetime.today() 
-        self.update_ULState()
+        self.update_states()
 
         try:
             self.pconnections = self.connections
@@ -120,50 +128,98 @@ class STDetective(threading.Thread):
         except:
             self.UlSpeeds.append(0)
 
+    def request_config(self):
+        if self.isOver: sys.exit()
+        try:
+            c = requests.get('http://localhost:8384/rest/system/config').json()
+            self.isSTAvailable = True
+            return c
+        except:
+            #~ raise
+            self.isSTAvailable = False
+            return False
+
+    def request_connections(self):
+        if self.isOver: sys.exit()
+        try:
+            connections = requests.get('http://localhost:8384/rest/system/connections').json()["connections"]
+            self.isSTAvailable = True
+            return connections
+        except:
+            #~ raise
+            self.isSTAvailable = False
+            return {}
+
     def request_local_completion(self):
-        c = requests.get('http://localhost:8384/rest/db/status?folder=default')
-        return c.json()["inSyncFiles"], c.json()["globalFiles"],  c.json()["inSyncBytes"], c.json()["globalBytes"]
+        if self.isOver: sys.exit()
+        try:
+            c = requests.get('http://localhost:8384/rest/db/status?folder=default')
+            self.isSTAvailable = True
+            return c.json()["inSyncFiles"], c.json()["globalFiles"],  c.json()["inSyncBytes"], c.json()["globalBytes"]
+        except:
+            self.isSTAvailable = False
+            return self.a,self.b,self.c,self.d
 
     def request_remote_completion(self,devid):
-        c = requests.get('http://localhost:8384/rest/db/completion?device='+devid+'&folder=default')
-        return c.json()["completion"]   
+        if self.isOver: sys.exit()
+        try:
+            c = requests.get('http://localhost:8384/rest/db/completion?device='+devid+'&folder=default')
+            self.isSTAvailable = True
+            return c.json()["completion"]   
+        except:
+            self.isSTAvailable = False
+            return 0
 
-    def update_ULState(self):
+    def request_server_completion(self)
+        for s in self.connected_server_ids: 
+            self.server_completion[s] =  self.request_remote_completion(s)
+
+    def request_events(self,since, Timeout):
+        if self.isOver: sys.exit()
+        try:
+            events = requests.get('http://localhost:8384/rest/events?since='+str(since), timeout=Timeout).json()
+            events = c.json()
+            self.isSTAvailable = True
+            return events
+        except requests.exceptions.Timeout
+            return []
+        except:
+            #~ raise
+            self.isSTAvailable = False
+            time.sleep(2)
+            return []
+
+    def update_states()
         if all((not p == 100) for p in self.server_completion.values()): 
             self.isUploading = True
             try:
                 self.QuickestServerID =max(self.server_completion.keys(), key = lambda x: self.server_completion[x])
             except: 
                 self.QuickestServerID=''
-            #~ print(self.QuickestServerID)
         else:
             self.isUploading = False
             self.QuickestServerID=''
     
-    def update_DLState(self):
-        if not self.a == self.b or not self.c == self.d: isDownloading = True
+        if not self.a == self.b or not self.c == self.d: 
+            isDownloading = True
         else: 
             self.isDownloading = False
 
     def run(self):
         next_event=1
         while not self.isOver:
-            try:
-                c = requests.get('http://localhost:8384/rest/system/connections')
-                self.connected_ids = list(c.json()["connections"].keys())
-                self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
+            
+            self.DlCheck()
+            self.update_gui()
+            self.UlCheck()
+            self.update_gui()
 
-                c = requests.get('http://localhost:8384/rest/events?since='+str(next_event), timeout=(2 if self.isDownloading or self.isUploading else 65))
-                events = c.json()
-                self.isSTAvailable = True
-            except: 
-                #~ raise
-                if not self.isDownloading and not self.isUploading:
-                    self.isSTAvailable = False
-                    GObject.idle_add(lambda :self.gui.update_icon(self)) 
-                    time.sleep(3)
-                    continue
-                else: pass
+            # the above calls should give correct answers as to whether 
+            # we are uploading, etc. We use also the event loop, in order to 
+            # 1) react to things quicker, 2) to know that something is happening 
+            # so that we have to run the calls above (request_events() is blocking)
+            
+            events = self.request_events(next_event, 2 if self.isDownloading or self.isUploading else 65)
             for v in events:
                 #print(v["type"]+str(v["id"]))
                 if v["type"] == "LocalIndexUpdated": 
@@ -174,20 +230,19 @@ class STDetective(threading.Thread):
                 elif str(v["type"]) == "FolderSummary": 
                     w = v["data"]["summary"]
                     self.a,self.b,self.c,self.d = w["inSyncFiles"], w["globalFiles"],  w["inSyncBytes"], w["globalBytes"]
-                    self.update_DLState()
 
-                if v["type"] == "FolderCompletion":
+                elif v["type"] == "FolderCompletion":
                     if v["data"]["device"] in self.connected_server_ids: 
                         self.server_completion[v["data"]["device"]] = v["data"]["completion"]
-                    self.update_ULState()
-
-            GObject.idle_add(lambda :self.gui.update_icon(self)) #we do it twice because DL/UL check might take ~1s, so this way icon update is quicker.
-            self.DlCheck()
-            self.UlCheck()            
-            GObject.idle_add(lambda :self.gui.update_icon(self)) 
+                    
+            self.update_states()
+            self.update_gui() 
             next_event = events[len(events)-1]["id"]
 
         sys.exit()
+
+
+
 
 class StikoGui(Gtk.StatusIcon):
     def __init__ (self, iconDir):
