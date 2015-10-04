@@ -135,7 +135,7 @@ class STDetective(threading.Thread):
                 self.QuickestServerID =max(self.server_completion.keys(), key = lambda x: self.server_completion[x])
             except: 
                 self.QuickestServerID=''
-            print(self.QuickestServerID)
+            #~ print(self.QuickestServerID)
         else:
             self.isUploading = False
             self.QuickestServerID=''
@@ -156,7 +156,8 @@ class STDetective(threading.Thread):
                 c = requests.get('http://localhost:8384/rest/events?since='+str(next_event), timeout=(2 if self.isDownloading or self.isUploading else 65))
                 events = c.json()
                 self.isSTAvailable = True
-            except:
+            except: 
+                #~ raise
                 if not self.isDownloading and not self.isUploading:
                     self.isSTAvailable = False
                     GObject.idle_add(lambda :self.gui.update_icon(self)) 
@@ -216,8 +217,8 @@ class StikoGui(Gtk.StatusIcon):
         Gtk.main_quit()
    
     def update_icon(self,t):
-        print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
-        if t.QuickestServerID: print(str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2)))
+        #~ print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
+        #~ if t.QuickestServerID: print(str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2)))
     
         info_str =''
         if not t.isSTAvailable: 
