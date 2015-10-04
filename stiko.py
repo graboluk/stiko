@@ -37,7 +37,7 @@ class STDetective(threading.Thread):
             except:
                 #~ raise
                 self.isSTAvailable = False
-                self.gui.update_icon() 
+                self.gui.update_icon(self) 
                 time.sleep(3)
 
         self.DlCheckTime = datetime.datetime.today()
@@ -96,6 +96,9 @@ class STDetective(threading.Thread):
         self.DlCheckTime = datetime.datetime.today() 
         self.update_DLState()
 
+        self.DlSpeeds.append((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
+
+
     def UlCheck(self):
         if not self.QuickestServerID or not self.isUploading or (datetime.datetime.today()-self.UlCheckTime).total_seconds() <2: return False
         self.server_completion[self.QuickestServerID] = self.request_remote_completion(self.QuickestServerID)
@@ -113,7 +116,7 @@ class STDetective(threading.Thread):
             byte_delta = self.connections[self.QuickestServerID]["outBytesTotal"] - self.pconnections[self.QuickestServerID]["outBytesTotal"]
             time = datetime.datetime.strptime(self.connections[self.QuickestServerID]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
             ptime = datetime.datetime.strptime(self.pconnections[self.QuickestServerID]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
-            self.UlSpeeds.append(round(byte_delta/((time-ptime).seconds*1000),0))
+            self.UlSpeeds.append(byte_delta/(time-ptime).total_seconds())
         except:
             self.UlSpeeds.append(0)
 
@@ -128,7 +131,10 @@ class STDetective(threading.Thread):
     def update_ULState(self):
         if all((not p == 100) for p in self.server_completion.values()): 
             self.isUploading = True
-            self.QuickestServerID =max(self.server_completion.keys(), key = lambda x: self.server_completion[x])
+            try:
+                self.QuickestServerID =max(self.server_completion.keys(), key = lambda x: self.server_completion[x])
+            except: 
+                self.QuickestServerID=''
             print(self.QuickestServerID)
         else:
             self.isUploading = False
@@ -158,7 +164,7 @@ class STDetective(threading.Thread):
                     continue
                 else: pass
             for v in events:
-                print(v["type"]+str(v["id"]))
+                #print(v["type"]+str(v["id"]))
                 if v["type"] == "LocalIndexUpdated": 
                     self.isUploading = True
 
@@ -227,7 +233,9 @@ class StikoGui(Gtk.StatusIcon):
             info_str +=  str(len(t.connected_server_ids))+" Server" +('s' if len(t.connected_server_ids) >1 else '')
             if t.isDownloading:
                 if not t.a==t.b:
-                    info_str += "\nDownloading "+str(t.b-t.a)+" file" +('s (' if t.b-t.a>1 else ' (')+str(round((t.d-t.c)/1000000,2))+'MB)'
+                    info_str += "\nDownloading "+str(t.b-t.a)+" file" +('s' if t.b-t.a>1 else '')
+                    info_str += ' ('+str(round((t.d-t.c)/1000000,2))+'MB @ '
+                    info_str += ('%.0f' % max(0,sum(list(t.DlSpeeds))/5000)) +'KB/s)'
                 else:
                     info_str += "\nChecking indices"
 
@@ -236,7 +244,7 @@ class StikoGui(Gtk.StatusIcon):
                     info_str += "\nUploading to "+t.id_dict[t.QuickestServerID]
                     info_str +=' ('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
                     try:
-                        info_str +=' @'+ str(round(sum(list(t.UlSpeeds))/5,0))+'KB/s)'
+                        info_str +=' @ '+ ('%.0f' % max(0,sum(list(t.UlSpeeds))/5000)) +'KB/s)'
                     except:
                         info_str +=')'
                 else:
@@ -256,10 +264,9 @@ class StikoGui(Gtk.StatusIcon):
         while Gtk.events_pending(): Gtk.main_iteration_do(True)
 
     def update_icon_animate(self,t):
-        print("update icon animate")
-        print ([t.isDownloading, t.isUploading,t.isSTAvailable, len(t.connected_server_ids), self.isAnimated])
+        #~ print("update icon animate")
+        #~ print ([t.isDownloading, t.isUploading,t.isSTAvailable, len(t.connected_server_ids), self.isAnimated])
         if (t.isDownloading or t.isUploading) and t.isSTAvailable and t.connected_server_ids and self.isAnimated:
-            print("inside")
             self.set_from_pixbuf(self.px_sync[self.animation_counter])
             self.animation_counter = (self.animation_counter + 1) % 2
             return True
