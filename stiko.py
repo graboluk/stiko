@@ -182,7 +182,7 @@ class StikoGui(Gtk.StatusIcon):
         #self.connect('query-tooltip', self.ask_detective) def callback(widget, x, y, keyboard_mode, tooltip, user_param1, ...)
         while Gtk.events_pending(): Gtk.main_iteration() 
         
-        self.animation_counter = 0
+        self.animation_counter = 1
         self.isAnimated = False   #for controlling animation only
 
     def on_left_click(event, icon):
