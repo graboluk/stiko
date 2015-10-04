@@ -40,7 +40,11 @@ class STDetective(threading.Thread):
                 time.sleep(3)
 
         self.DlCheckTime = datetime.datetime.today()
-        self.DlCheckTime = self.DlCheckTime
+        self.UlCheckTime = self.DlCheckTime
+        self.pDlCheckTime = self.DlCheckTime
+        self.pUlCheckTime = self.UlCheckTime
+        
+        self.QuickestServerID=''
 
         self.id_dict = {}
         for a in self.devices:
@@ -84,6 +88,14 @@ class STDetective(threading.Thread):
         self.a,self.b,self.c,self.d= self.request_local_completion()
         self.pDlCheckTime = self.DlCheckTime
         self.DlCheckTime = datetime.datetime.today() 
+        self.update_DLState()
+
+    def UlCheck(self):
+        if not self.QuickestServerID or not self.isUploading or (datetime.datetime.today()-self.UlCheckTime).total_seconds() <2: return False
+        self.server_completion[self.QuickestServerID] = self.request_remote_completion(self.QuickestServerID)
+        self.pUlCheckTime = self.UlCheckTime
+        self.UlCheckTime = datetime.datetime.today() 
+        self.update_ULState()
 
     def request_local_completion(self):
         c = requests.get('http://localhost:8384/rest/db/status?folder=default')
@@ -93,24 +105,38 @@ class STDetective(threading.Thread):
         c = requests.get('http://localhost:8384/rest/db/completion?device='+devid+'&folder=default')
         return c.json()["completion"]   
 
+    def update_ULState(self):
+        if all((not p == 100) for p in self.server_completion.values()): 
+            self.isUploading = True
+            self.QuickestServerID =max(self.server_completion.keys(), key = lambda x: self.server_completion[x])
+            print(self.QuickestServerID)
+        else:
+            self.isUploading = False
+            self.QuickestServerID=''
+    
+    def update_DLState(self):
+        if not self.a == self.b or not self.c == self.d: isDownloading = True
+        else: 
+            self.isDownloading = False
 
     def run(self):
         next_event=1
         while not self.isOver:
             try:
-                #~ c = requests.get('http://localhost:8384/rest/system/connections')
-                #~ self.connected_ids = list(c.json()["connections"].keys())
-                #~ self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
+                c = requests.get('http://localhost:8384/rest/system/connections')
+                self.connected_ids = list(c.json()["connections"].keys())
+                self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
 
-                c = requests.get('http://localhost:8384/rest/events?since='+str(next_event))
+                c = requests.get('http://localhost:8384/rest/events?since='+str(next_event), timeout=(2 if self.isDownloading or self.isUploading else 65))
                 events = c.json()
                 self.isSTAvailable = True
             except:
-                #~ #raise
-                self.isSTAvailable = False
-                GObject.idle_add(lambda :self.gui.update_icon(self)) 
-                time.sleep(3)
-                continue
+                if not self.isDownloading and not self.isUploading:
+                    self.isSTAvailable = False
+                    GObject.idle_add(lambda :self.gui.update_icon(self)) 
+                    time.sleep(3)
+                    continue
+                else: pass
             for v in events:
                 print(v["type"]+str(v["id"]))
                 if v["type"] == "LocalIndexUpdated": 
@@ -121,20 +147,19 @@ class STDetective(threading.Thread):
                 elif str(v["type"]) == "FolderSummary": 
                     w = v["data"]["summary"]
                     self.a,self.b,self.c,self.d = w["inSyncFiles"], w["globalFiles"],  w["inSyncBytes"], w["globalBytes"]
-                    if not self.a == self.b or not self.c == self.d: isDownloading = True
-                    else: 
-                        self.isDownloading = False
+                    self.update_DLState()
 
                 if v["type"] == "FolderCompletion":
                     if v["data"]["device"] in self.connected_server_ids: 
                         self.server_completion[v["data"]["device"]] = v["data"]["completion"]
-                    if all((not p == 100) for p in self.server_completion.values()): self.isUploading = True
-                    else: self.isUploading = False
-            GObject.idle_add(lambda :self.gui.update_icon(self)) 
+                    self.update_ULState()
 
-            next_event = events[len(events)-1]["id"]
-            print(next_event)
+            GObject.idle_add(lambda :self.gui.update_icon(self)) #we do it twice because DL/UL check might take ~1s, so this way icon update is quicker.
             self.DlCheck()
+            self.UlCheck()            
+            GObject.idle_add(lambda :self.gui.update_icon(self)) 
+            next_event = events[len(events)-1]["id"]
+
         sys.exit()
 
 class StikoGui(Gtk.StatusIcon):
@@ -166,43 +191,54 @@ class StikoGui(Gtk.StatusIcon):
    
     def update_icon(self,t):
         print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
+        if t.QuickestServerID: print(str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2)))
+    
         info_str =''
         if not t.isSTAvailable: 
-            info_str = "No contact with syncthing"
-            self.set_tooltip_text(info_str)
+            info_str += "No contact with syncthing"
             self.set_from_pixbuf(self.px_noST)
             self.isAnimated=False
-        if not t.connected_server_ids:
-            self.set_tooltip_text("No servers")
+        elif not t.connected_server_ids:
+            info_str += "No servers"
             self.set_from_pixbuf(self.px_noServer)
             self.isAnimated=False
-        if t.isDownloading or t.isUploading:
-            self.set_tooltip_text(str(len(t.connected_server_ids))+" Server(s)"+
-                #''.join ("\n "+t.id_dict[s] for s in t.connected_server_ids)+
-                (("\nDownloading" if not t.a==t.b else "\nChecking indices")+
-                ("\n "+str(round((t.d-t.c)/1000000,2))+'MB  in '+str(t.b-t.a)+" file(s) " if not t.a==t.b else ',,,'))if t.isDownloading else ''+
-                ("\nUploading..." if t.isUploading else ''))
-            self.set_from_pixbuf(self.px_sync[0])
-            self.animation_counter = 1
+
+        elif t.isDownloading or t.isUploading:
+            info_str +=  str(len(t.connected_server_ids))+" Server" +('s' if len(t.connected_server_ids) >1 else '')
+            if t.isDownloading:
+                if not t.a==t.b:
+                    info_str += "\nDownloading "+str(t.b-t.a)+" file" +('s (' if t.b-t.a>1 else ' (')+str(round((t.d-t.c)/1000000,2))+'MB)'
+                else:
+                    info_str += "\nChecking remote indices"
+
+            if t.isUploading:
+                if t.QuickestServerID:
+                    info_str += "\nUploading to "+t.id_dict[t.QuickestServerID] + ' ('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB)'
+                else:
+                    info_str += "\nChecking local indices"
+
             if not self.isAnimated: 
-                self.isAnimated=True
-                GObject.timeout_add(800, self.update_icon_animate,t)
+                self.isAnimated = True
+                self.set_from_pixbuf(self.px_sync[0])
+                self.animation_counter = 1
+                GObject.timeout_add(600, self.update_icon_animate,t)
         else:
-            self.set_tooltip_text(str(len(t.connected_server_ids))+" Server(s)"+ 
-                #''.join ("\n "+t.id_dict[s] for s in t.connected_server_ids)+
-                "\nUp to Date")            
+            info_str +=  str(len(t.connected_server_ids))+" Server" +('s' if len(t.connected_server_ids) >1 else '')+"\nUp to Date"            
             self.set_from_pixbuf(self.px_good)
             self.isAnimated=False
+
+        self.set_tooltip_text(info_str)
         while Gtk.events_pending(): Gtk.main_iteration_do(True)
 
     def update_icon_animate(self,t):
-        #~ print("update icon animate")
+        print("update icon animate")
+        print ([t.isDownloading, t.isUploading,t.isSTAvailable, len(t.connected_server_ids), self.isAnimated])
         if (t.isDownloading or t.isUploading) and t.isSTAvailable and t.connected_server_ids and self.isAnimated:
+            print("inside")
             self.set_from_pixbuf(self.px_sync[self.animation_counter])
             self.animation_counter = (self.animation_counter + 1) % 2
             return True
-        else:
-            self.animation_counter = 0
+        else: 
             return False
         
 
