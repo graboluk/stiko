@@ -17,4 +17,4 @@ Once stiko is running you can left-click it to quit. If you hover over the icon,
 4. the icon wiggles if either local files are not up to date (and hence data is being downloaded) or none of the servers are up to data (and hence data is being uplaoded). Hover the cursr over the icon to find out the details.
 
 #### License
-Licensed under GPL3. But in case you would like to contribute I require all contribution to be dual licensed MPL3/GPL3, so that it's easy to change the license to another free software license if ever need be.
+Licensed under GPL3. But in case you would like to contribute I require all contribution to be dual licensed MPL2/GPL3, so that it's easy to change the license to another free software license if ever need be.
