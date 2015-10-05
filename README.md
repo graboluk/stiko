@@ -10,7 +10,7 @@ Currently stiko.py assumes that the URL of syncthing is locahost:8384. The comma
 
 Once stiko is running you can left-click it to quit. If you hover over the icon, useful info will appear - number of connected servers, current sate (Up to Date, Uploading, Downloading Checking Indices), as well as download/upload progress.
 
-#### Meaning of icons.
+#### Meaning of icons
 1. If local files are Up to Date, and **at least one server** is Up to Date, then the icon is blue.
 2. If no servers are connected then the icon is grey.
 3. If syncthing instance can't be contacted then the icon is red.
