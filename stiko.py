@@ -74,10 +74,10 @@ class STDetective(threading.Thread):
         self.get_base_state()
         self.update_gui()
 
-    def get_base_state():
+    def get_base_state(self):
         self.a,self.b,self.c,self.d = self.request_local_completion()
 
-        self.connections = request_connections()
+        self.connections = self.request_connections()
         self.connected_ids = list(self.connections.keys())
         self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
     
@@ -85,7 +85,7 @@ class STDetective(threading.Thread):
         # the call afterwards can take long time, so better update gui now
         self.update_gui()
 
-        self.server_completion = self.request_server_completion()
+        self.request_server_completion()
 
         self.update_states()
 
@@ -95,9 +95,9 @@ class STDetective(threading.Thread):
         GObject.idle_add(lambda :self.gui.update_icon(self)) 
 
     def DlCheck(self):
-        if (datetime.datetime.today()-self.DlCheckTime).total_seconds() <2: 
-            time.sleep(1)
-            return False
+        print("DLCheck()")
+        if (datetime.datetime.today() -self.pDlCheckTime).total_seconds() <3: return
+
         self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
         self.a,self.b,self.c,self.d= self.request_local_completion()
         self.pDlCheckTime = self.DlCheckTime
@@ -108,25 +108,25 @@ class STDetective(threading.Thread):
 
 
     def UlCheck(self):
-        if not self.QuickestServerID or not self.isUploading or (datetime.datetime.today()-self.UlCheckTime).total_seconds() <2: return False
-        self.server_completion[self.QuickestServerID] = self.request_remote_completion(self.QuickestServerID)
-        self.pUlCheckTime = self.UlCheckTime
-        self.UlCheckTime = datetime.datetime.today() 
+        print("ULCheck()")
+        if (datetime.datetime.today() -self.pUlCheckTime).total_seconds() <3: return
+        self.pconnections = self.connections
+        self.connections = self.request_connections()
+        self.connected_ids = list(self.connections.keys())
+        self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
+
         self.update_states()
 
-        try:
-            self.pconnections = self.connections
-            self.connections = requests.get('http://localhost:8384/rest/system/connections').json()["connections"]
-        except:
-            self.isSTAvailable = False
-        
-        try:
+        self.pUlCheckTime = self.UlCheckTime
+        self.UlCheckTime = datetime.datetime.today() 
+    
+        if self.QuickestServerID in self.pconnections.keys() and self.QuickestServerID in self.connections.keys():
             byte_delta = self.connections[self.QuickestServerID]["outBytesTotal"] - self.pconnections[self.QuickestServerID]["outBytesTotal"]
             time = datetime.datetime.strptime(self.connections[self.QuickestServerID]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
             ptime = datetime.datetime.strptime(self.pconnections[self.QuickestServerID]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
             self.UlSpeeds.append(byte_delta/(time-ptime).total_seconds())
-        except:
-            self.UlSpeeds.append(0)
+            #~ print(byte_delta)
+            #~ print(self.UlSpeeds)
 
     def request_config(self):
         if self.isOver: sys.exit()
@@ -157,6 +157,7 @@ class STDetective(threading.Thread):
             self.isSTAvailable = True
             return c.json()["inSyncFiles"], c.json()["globalFiles"],  c.json()["inSyncBytes"], c.json()["globalBytes"]
         except:
+            raise
             self.isSTAvailable = False
             return self.a,self.b,self.c,self.d
 
@@ -170,26 +171,26 @@ class STDetective(threading.Thread):
             self.isSTAvailable = False
             return 0
 
-    def request_server_completion(self)
+    def request_server_completion(self):
         for s in self.connected_server_ids: 
             self.server_completion[s] =  self.request_remote_completion(s)
 
     def request_events(self,since, Timeout):
+        print("request_events() "+str(Timeout))
         if self.isOver: sys.exit()
         try:
             events = requests.get('http://localhost:8384/rest/events?since='+str(since), timeout=Timeout).json()
-            events = c.json()
             self.isSTAvailable = True
             return events
-        except requests.exceptions.Timeout
-            return []
         except:
-            #~ raise
-            self.isSTAvailable = False
-            time.sleep(2)
+            # there seems to be a bug in requests. As a workaround 
+            # we will just ignore error when Timeout is 2. If this is 
+            # genuine then it will be caught soon (in request_connections for example)
+            if Timeout >3:
+                self.isSTAvailable = False
             return []
 
-    def update_states()
+    def update_states(self):
         if all((not p == 100) for p in self.server_completion.values()): 
             self.isUploading = True
             try:
@@ -206,9 +207,12 @@ class STDetective(threading.Thread):
             self.isDownloading = False
 
     def run(self):
+        print("run()")
         next_event=1
         while not self.isOver:
-            
+            #~ # The "if" is heuristic, we are giving ourselves better chances 
+            #~ # to report event picked-up in the event loop
+
             self.DlCheck()
             self.update_gui()
             self.UlCheck()
@@ -221,23 +225,34 @@ class STDetective(threading.Thread):
             
             events = self.request_events(next_event, 2 if self.isDownloading or self.isUploading else 65)
             for v in events:
-                #print(v["type"]+str(v["id"]))
-                if v["type"] == "LocalIndexUpdated": 
+                print(v["type"]+str(v["id"]))
+                
+                # the two first options come together, but sometimes there 
+                # is a FolderCompletion (for example) in between which might confuse us. 
+                if v["type"] == "StateChanged" and v["data"]["to"] == "scanning": 
+                    self.isUploading = True
+                elif v["type"] == "LocalIndexUpdated": 
                     self.isUploading = True
 
                 elif v["type"] == "RemoteIndexUpdated":
                     self.isDownloading = True
+
                 elif str(v["type"]) == "FolderSummary": 
                     w = v["data"]["summary"]
+                    self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
                     self.a,self.b,self.c,self.d = w["inSyncFiles"], w["globalFiles"],  w["inSyncBytes"], w["globalBytes"]
+                    self.pDlCheckTime = self.DlCheckTime
+                    self.DlCheckTime = datetime.datetime.today() 
+                    self.DlSpeeds.append((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
+                    self.update_states()
 
                 elif v["type"] == "FolderCompletion":
                     if v["data"]["device"] in self.connected_server_ids: 
                         self.server_completion[v["data"]["device"]] = v["data"]["completion"]
-                    
-            self.update_states()
+                    self.update_states()
+
             self.update_gui() 
-            next_event = events[len(events)-1]["id"]
+            if events: next_event = events[len(events)-1]["id"]
 
         sys.exit()
 
@@ -272,7 +287,7 @@ class StikoGui(Gtk.StatusIcon):
         Gtk.main_quit()
    
     def update_icon(self,t):
-        #~ print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
+        print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
         #~ if t.QuickestServerID: print(str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2)))
     
         info_str =''
