@@ -6,7 +6,7 @@ stiko is written in python3 using  gtk3 so it should run on a wide variety of pl
 
 To run it, execute `python stiko.py` or make sure that the file stiko.py is executable and excute `stiko.py`
 
-Currently stiko.py assumes that the URL of syncthing is locahost:8384. The command line options are: `--icons ICON_DIR` (defaults to the same directory in which the file stiko.py is) and `--servers S`, where S is a space separated list of names of devices which should be treated as servers (defaults to all connected devices).
+Currently stiko.py assumes that the URL of syncthing is localhost:8384. The command line options are: `--icons ICON_DIR` (defaults to the same directory in which the file stiko.py is) and `--servers S`, where S is a space separated list of names of devices which should be treated as servers (defaults to all connected devices).
 
 Once stiko is running you can left-click it to quit. If you hover over the icon, useful info will appear - number of connected servers, current sate (Up to Date, Uploading, Downloading Checking Indices), as well as download/upload progress.
 
