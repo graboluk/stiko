@@ -12,6 +12,7 @@ from gi.repository import Gtk, GObject, GdkPixbuf
 import threading
 import collections
 
+DEBUG=False
 
 class STDetective(threading.Thread):
     def __init__(self, gui, servers):
@@ -95,7 +96,7 @@ class STDetective(threading.Thread):
         GObject.idle_add(lambda :self.gui.update_icon(self)) 
 
     def DlCheck(self):
-        print("DLCheck()")
+        if DEBUG: print("DLCheck()")
         if (datetime.datetime.today() -self.pDlCheckTime).total_seconds() <3: return
 
         self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
@@ -108,7 +109,7 @@ class STDetective(threading.Thread):
 
 
     def UlCheck(self):
-        print("ULCheck()")
+        if DEBUG: print("ULCheck()")
         if (datetime.datetime.today() -self.pUlCheckTime).total_seconds() <3: return
 
         # this is a dirty hack - we give ourselves 7 seconds of hope 
@@ -182,7 +183,7 @@ class STDetective(threading.Thread):
             self.server_completion[s] =  self.request_remote_completion(s)
 
     def request_events(self,since, Timeout):
-        print("request_events() "+str(Timeout))
+        if DEBUG: print("request_events() "+str(Timeout))
         if self.isOver: sys.exit()
         try:
             events = requests.get('http://localhost:8384/rest/events?since='+str(since), timeout=Timeout).json()
@@ -209,12 +210,12 @@ class STDetective(threading.Thread):
     
     def update_dl_state(self):
         if not self.a == self.b or not self.c == self.d: 
-            isDownloading = True
+            self.isDownloading = True
         else: 
             self.isDownloading = False
 
     def run(self):
-        print("run()")
+        if DEBUG: print("run()")
         next_event=1
         while not self.isOver:
 
@@ -231,7 +232,7 @@ class STDetective(threading.Thread):
             
             events = self.request_events(next_event, 2 if self.isDownloading or self.isUploading else 65)
             for v in events:
-                print(v["type"]+str(v["id"]))
+                if DEBUG: print(v["type"]+str(v["id"]))
                 
                 # The "stamp" is heuristic, we are giving ourselves better chances 
                 # to report event picked-up in the event loop
@@ -294,9 +295,8 @@ class StikoGui(Gtk.StatusIcon):
         Gtk.main_quit()
    
     def update_icon(self,t):
-        print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
-        #~ if t.QuickestServerID: print(str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2)))
-    
+        if DEBUG: print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
+   
         info_str = ''
         if not t.isSTAvailable: 
             info_str += "No contact with syncthing"
