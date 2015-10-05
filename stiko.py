@@ -91,15 +91,12 @@ class STDetective(threading.Thread):
         self.update_dl_state()
         self.update_ul_state()
 
-
-
     def update_gui(self):
         GObject.idle_add(lambda :self.gui.update_icon(self)) 
 
     def DlCheck(self):
         print("DLCheck()")
         if (datetime.datetime.today() -self.pDlCheckTime).total_seconds() <3: return
-        #if (datetime.datetime.today() - self.local_index_stamp).total_seconds() <7:return
 
         self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
         self.a,self.b,self.c,self.d= self.request_local_completion()
@@ -113,8 +110,13 @@ class STDetective(threading.Thread):
     def UlCheck(self):
         print("ULCheck()")
         if (datetime.datetime.today() -self.pUlCheckTime).total_seconds() <3: return
+
+        # this is a dirty hack - we give ourselves 7 seconds of hope 
+        # that all servers will report their FolderCompletions. Otherwise 
+        # the icon will go "OK" and only after FolderCompletions arrive will it go to "Sync" again
         if (datetime.datetime.today() - self.local_index_stamp).total_seconds() <7:return
-        self.pconnections = self.connections
+
+        self.pconnections = self.connections 
         self.connections = self.request_connections()
         self.connected_ids = list(self.connections.keys())
         self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
@@ -282,8 +284,7 @@ class StikoGui(Gtk.StatusIcon):
 
         self.set_from_pixbuf(self.px_noServer)
         self.connect('activate', self.on_left_click)
-        #self.connect('query-tooltip', self.ask_detective) def callback(widget, x, y, keyboard_mode, tooltip, user_param1, ...)
-        while Gtk.events_pending(): Gtk.main_iteration() 
+        #while Gtk.events_pending(): Gtk.main_iteration() 
         
         self.animation_counter = 1
         self.isAnimated = False   #for controlling animation only
@@ -296,7 +297,7 @@ class StikoGui(Gtk.StatusIcon):
         print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
         #~ if t.QuickestServerID: print(str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2)))
     
-        info_str =''
+        info_str = ''
         if not t.isSTAvailable: 
             info_str += "No contact with syncthing"
             self.set_from_pixbuf(self.px_noST)
