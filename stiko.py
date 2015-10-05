@@ -275,8 +275,8 @@ class StikoGui(Gtk.StatusIcon):
             self.px_good = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-ok.png'))
             self.px_noST = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-notok.png'))
             self.px_noServer = GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-inactive.png'))
-            self.px_sync = [GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync0.png')), 
-                        GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync1.png'))]
+            self.px_sync = [GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync1.png')), 
+                        GdkPixbuf.Pixbuf.new_from_file(os.path.join(iconDir,'stiko-sync0.png'))]
         except:
             #~ raise
             print("I coudn't open icon files.")
@@ -320,11 +320,11 @@ class StikoGui(Gtk.StatusIcon):
             if t.isUploading:
                 if t.QuickestServerID:
                     info_str += "\nUploading to "+t.id_dict[t.QuickestServerID]
-                    info_str +=' ('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
+                    info_str += ' ('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
                     try:
-                        info_str +=' @ '+ ('%.0f' % max(0,sum(list(t.UlSpeeds))/5000)) +'KB/s)'
+                        info_str += ' @ '+ ('%.0f' % max(0,sum(list(t.UlSpeeds))/5000)) +'KB/s)'
                     except:
-                        info_str +=')'
+                        info_str += ')'
                 else:
                     info_str += "\nUploading..."
 
@@ -334,7 +334,7 @@ class StikoGui(Gtk.StatusIcon):
                 self.animation_counter = 1
                 GObject.timeout_add(600, self.update_icon_animate,t)
         else:
-            info_str +=  str(len(t.connected_server_ids))+" Server" +('s' if len(t.connected_server_ids) >1 else '')+"\nUp to Date"            
+            info_str += str(len(t.connected_server_ids))+" Server" +('s' if len(t.connected_server_ids) >1 else '')+"\nUp to Date"            
             self.set_from_pixbuf(self.px_good)
             self.isAnimated=False
 
@@ -353,9 +353,9 @@ class StikoGui(Gtk.StatusIcon):
         
 
 
-parser = argparse.ArgumentParser(description = 'This is stiko, an icon for syncthing.',epilog='', usage='stiko.py [options]')
+parser = argparse.ArgumentParser(description = 'This is stiko, a systray icon for syncthing.',epilog='', usage='stiko.py [options]')
 parser.add_argument('--servers', nargs = '+', default ='',help = 'List of names of devices treated as servers, space separated. If empty then all connected devices will be treated as servers.',metavar='')
-parser.add_argument('--icons',  default ='',help = 'Path to the directory with icons. If empty then use this script\'s directory ('+os.path.dirname(os.path.abspath(__file__))+')', action="store", metavar='')
+parser.add_argument('--icons',  default ='', help = 'Path to the directory with icons. If empty then use this script\'s directory ('+os.path.dirname(os.path.abspath(__file__))+')', action="store", metavar='')
 args = parser.parse_args(sys.argv[1:])
 iconDir = os.path.dirname(__file__) if not args.icons else args.icons[0]
 
