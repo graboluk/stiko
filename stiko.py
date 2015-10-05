@@ -38,8 +38,9 @@ class STDetective(threading.Thread):
         self.DlCheckTime = datetime.datetime.today()
         self.UlCheckTime = self.DlCheckTime
         self.pDlCheckTime = self.DlCheckTime
-        self.pUlCheckTime = self.UlCheckTime
-        
+        self.pUlCheckTime = self.DlCheckTime
+        self.local_index_stamp =  self.DlCheckTime      
+
         self.UlSpeeds = collections.deque(maxlen=5)
         self.DlSpeeds = collections.deque(maxlen=5)
 
@@ -87,7 +88,8 @@ class STDetective(threading.Thread):
 
         self.request_server_completion()
 
-        self.update_states()
+        self.update_dl_state()
+        self.update_ul_state()
 
 
 
@@ -97,12 +99,13 @@ class STDetective(threading.Thread):
     def DlCheck(self):
         print("DLCheck()")
         if (datetime.datetime.today() -self.pDlCheckTime).total_seconds() <3: return
+        #if (datetime.datetime.today() - self.local_index_stamp).total_seconds() <7:return
 
         self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
         self.a,self.b,self.c,self.d= self.request_local_completion()
         self.pDlCheckTime = self.DlCheckTime
         self.DlCheckTime = datetime.datetime.today() 
-        self.update_states()
+        self.update_dl_state()
 
         self.DlSpeeds.append((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
 
@@ -110,12 +113,13 @@ class STDetective(threading.Thread):
     def UlCheck(self):
         print("ULCheck()")
         if (datetime.datetime.today() -self.pUlCheckTime).total_seconds() <3: return
+        if (datetime.datetime.today() - self.local_index_stamp).total_seconds() <7:return
         self.pconnections = self.connections
         self.connections = self.request_connections()
         self.connected_ids = list(self.connections.keys())
         self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
 
-        self.update_states()
+        self.update_ul_state()
 
         self.pUlCheckTime = self.UlCheckTime
         self.UlCheckTime = datetime.datetime.today() 
@@ -190,7 +194,7 @@ class STDetective(threading.Thread):
                 self.isSTAvailable = False
             return []
 
-    def update_states(self):
+    def update_ul_state(self):
         if all((not p == 100) for p in self.server_completion.values()): 
             self.isUploading = True
             try:
@@ -201,6 +205,7 @@ class STDetective(threading.Thread):
             self.isUploading = False
             self.QuickestServerID=''
     
+    def update_dl_state(self):
         if not self.a == self.b or not self.c == self.d: 
             isDownloading = True
         else: 
@@ -210,8 +215,7 @@ class STDetective(threading.Thread):
         print("run()")
         next_event=1
         while not self.isOver:
-            #~ # The "if" is heuristic, we are giving ourselves better chances 
-            #~ # to report event picked-up in the event loop
+
 
             self.DlCheck()
             self.update_gui()
@@ -227,13 +231,15 @@ class STDetective(threading.Thread):
             for v in events:
                 print(v["type"]+str(v["id"]))
                 
-                # the two first options come together, but sometimes there 
-                # is a FolderCompletion (for example) in between which might confuse us. 
+                # The "stamp" is heuristic, we are giving ourselves better chances 
+                # to report event picked-up in the event loop
                 if v["type"] == "StateChanged" and v["data"]["to"] == "scanning": 
                     self.isUploading = True
-                elif v["type"] == "LocalIndexUpdated": 
+                    self.local_index_stamp = datetime.datetime.today()
+                if v["type"] == "LocalIndexUpdated": 
                     self.isUploading = True
-
+                    self.local_index_stamp = datetime.datetime.today()
+            
                 elif v["type"] == "RemoteIndexUpdated":
                     self.isDownloading = True
 
@@ -244,12 +250,12 @@ class STDetective(threading.Thread):
                     self.pDlCheckTime = self.DlCheckTime
                     self.DlCheckTime = datetime.datetime.today() 
                     self.DlSpeeds.append((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
-                    self.update_states()
+                    self.update_dl_state()
 
                 elif v["type"] == "FolderCompletion":
                     if v["data"]["device"] in self.connected_server_ids: 
                         self.server_completion[v["data"]["device"]] = v["data"]["completion"]
-                    self.update_states()
+                    self.update_ul_state()
 
             self.update_gui() 
             if events: next_event = events[len(events)-1]["id"]
