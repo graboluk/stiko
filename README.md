@@ -8,7 +8,7 @@ To run it, execute `python stiko.py` or make sure that the file stiko.py is exec
 
 Currently stiko.py assumes that the URL of syncthing is localhost:8384. The command line options are: `--icons ICON_DIR` (defaults to the same directory in which the file stiko.py is) and `--servers S`, where S is a space separated list of names of devices which should be treated as servers (defaults to all connected devices).
 
-Once stiko is running you can left-click it to quit. If you hover over the icon, useful info will appear - number of connected servers, current sate (Up to Date, Uploading, Downloading Checking Indices), as well as download/upload progress.
+Once stiko is running you can left-click it to quit. If you hover over the icon, useful info will appear - number of connected servers, current state (Up to Date, Uploading, Downloading, Checking Indices), as well as download/upload progress.
 
 #### Meaning of icons
 1. If local files are Up to Date, and **at least one server** is Up to Date, then the icon is blue.
