@@ -12,6 +12,7 @@ from gi.repository import Gtk, GObject, GdkPixbuf
 import threading
 import collections
 
+DEBUG=False
 
 class STDetective(threading.Thread):
     def __init__(self, gui, servers):
@@ -45,26 +46,37 @@ class STDetective(threading.Thread):
         self.DlSpeeds = collections.deque(maxlen=5)
 
         self.QuickestServerID=''
-    
-        config = self.request_config()
-        while not self.isOver and not config:
-            time.sleep(3)
-            config = self.request_config()
-    
+        self.config = {}
+
+    def basic_init(self):
+        # we add basic_init() (instead of calling everything from init()) 
+        # because otherwise if the basic checks below fail gui is unresponsive
+        # (because main_loop isn't working yet). This will be ran from self.run() 
+   
+        self.config = self.request_config()
+
         # A thread-safe way to demand gui updates. We do it here 
         # because request_config() hopefully changed isSTAvailable to True
         self.update_gui()
 
-        for a in config["devices"]:
-            self.id_dict[a["deviceID"]] =  a['name']
+        while not self.config:
+            time.sleep(3)
+            config = self.request_config()
+            self.update_gui()
+            if self.isOver: sys.exit()
 
+        for a in self.config["devices"]:
+            self.id_dict[a["deviceID"]] =  a['name']
+        print(self.config["folders"][0]["id"])
+        print(STFolder)
         if any([not (a in self.id_dict.values()) for a in self.server_names]):
             print("Some provided server names are wrong.")
-            Gtk.main_quit()
             sys.exit()
         if any([not (a in id_dict.keys()) for a in self.server_ids]):
             print("Some provided server ids are wrong.")
-            Gtk.main_quit()
+            sys.exit()
+        if all([not f["id"] == STFolder for f in self.config["folders"]]):
+            print("No such folder reported by syncthing")
             sys.exit()
 
         if not self.server_names and not self.server_ids: 
@@ -72,8 +84,6 @@ class STDetective(threading.Thread):
         else:  
             self.server_ids = [a for a in self.id_dict.keys() if (self.id_dict[a] in self.server_names or a in self.server_ids)]
 
-        self.get_base_state()
-        self.update_gui()
 
     def get_base_state(self):
         self.a,self.b,self.c,self.d = self.request_local_completion()
@@ -93,9 +103,10 @@ class STDetective(threading.Thread):
 
     def update_gui(self):
         GObject.idle_add(lambda :self.gui.update_icon(self)) 
+        #while Gtk.events_pending(): Gtk.main_iteration_do(True)
 
     def DlCheck(self):
-        print("DLCheck()")
+        if DEBUG: print("DLCheck()")
         if (datetime.datetime.today() -self.pDlCheckTime).total_seconds() <3: return
 
         self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
@@ -108,7 +119,7 @@ class STDetective(threading.Thread):
 
 
     def UlCheck(self):
-        print("ULCheck()")
+        if DEBUG: print("ULCheck()")
         if (datetime.datetime.today() -self.pUlCheckTime).total_seconds() <3: return
 
         # this is a dirty hack - we give ourselves 7 seconds of hope 
@@ -137,7 +148,7 @@ class STDetective(threading.Thread):
     def request_config(self):
         if self.isOver: sys.exit()
         try:
-            c = requests.get('http://localhost:8384/rest/system/config').json()
+            c = requests.get(STUrl+'/rest/system/config').json()
             self.isSTAvailable = True
             return c
         except:
@@ -148,7 +159,7 @@ class STDetective(threading.Thread):
     def request_connections(self):
         if self.isOver: sys.exit()
         try:
-            connections = requests.get('http://localhost:8384/rest/system/connections').json()["connections"]
+            connections = requests.get(STUrl+'/rest/system/connections').json()["connections"]
             self.isSTAvailable = True
             return connections
         except:
@@ -159,18 +170,18 @@ class STDetective(threading.Thread):
     def request_local_completion(self):
         if self.isOver: sys.exit()
         try:
-            c = requests.get('http://localhost:8384/rest/db/status?folder=default')
+            c = requests.get(STUrl+'/rest/db/status?folder='+STFolder)
             self.isSTAvailable = True
             return c.json()["inSyncFiles"], c.json()["globalFiles"],  c.json()["inSyncBytes"], c.json()["globalBytes"]
         except:
-            raise
+            #~ raise
             self.isSTAvailable = False
             return self.a,self.b,self.c,self.d
 
     def request_remote_completion(self,devid):
         if self.isOver: sys.exit()
         try:
-            c = requests.get('http://localhost:8384/rest/db/completion?device='+devid+'&folder=default')
+            c = requests.get(STUrl+'/rest/db/completion?device='+devid+'&folder='+STFolder)
             self.isSTAvailable = True
             return c.json()["completion"]   
         except:
@@ -182,10 +193,10 @@ class STDetective(threading.Thread):
             self.server_completion[s] =  self.request_remote_completion(s)
 
     def request_events(self,since, Timeout):
-        print("request_events() "+str(Timeout))
+        if DEBUG: print("request_events() "+str(Timeout))
         if self.isOver: sys.exit()
         try:
-            events = requests.get('http://localhost:8384/rest/events?since='+str(since), timeout=Timeout).json()
+            events = requests.get(STUrl+'/rest/events?since='+str(since), timeout=Timeout).json()
             self.isSTAvailable = True
             return events
         except:
@@ -209,16 +220,20 @@ class STDetective(threading.Thread):
     
     def update_dl_state(self):
         if not self.a == self.b or not self.c == self.d: 
-            isDownloading = True
+            self.isDownloading = True
         else: 
             self.isDownloading = False
 
     def run(self):
-        print("run()")
+        if DEBUG: print("run()")
+        
+        self.basic_init()
         next_event=1
+
+        self.get_base_state()
+        self.update_gui()
+
         while not self.isOver:
-
-
             self.DlCheck()
             self.update_gui()
             self.UlCheck()
@@ -231,10 +246,10 @@ class STDetective(threading.Thread):
             
             events = self.request_events(next_event, 2 if self.isDownloading or self.isUploading else 65)
             for v in events:
-                print(v["type"]+str(v["id"]))
+                if DEBUG: print(v["type"]+str(v["id"]))
                 
                 # The "stamp" is heuristic, we are giving ourselves better chances 
-                # to report event picked-up in the event loop
+                # to report events picked-up in the event loop
                 if v["type"] == "StateChanged" and v["data"]["to"] == "scanning": 
                     self.isUploading = True
                     self.local_index_stamp = datetime.datetime.today()
@@ -294,9 +309,8 @@ class StikoGui(Gtk.StatusIcon):
         Gtk.main_quit()
    
     def update_icon(self,t):
-        print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
-        #~ if t.QuickestServerID: print(str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2)))
-    
+        if DEBUG: print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
+   
         info_str = ''
         if not t.isSTAvailable: 
             info_str += "No contact with syncthing"
@@ -355,9 +369,14 @@ class StikoGui(Gtk.StatusIcon):
 
 parser = argparse.ArgumentParser(description = 'This is stiko, a systray icon for syncthing.',epilog='', usage='stiko.py [options]')
 parser.add_argument('--servers', nargs = '+', default ='',help = 'List of names of devices treated as servers, space separated. If empty then all connected devices will be treated as servers.',metavar='')
-parser.add_argument('--icons',  default ='', help = 'Path to the directory with icons. If empty then use this script\'s directory ('+os.path.dirname(os.path.abspath(__file__))+')', action="store", metavar='')
+parser.add_argument('--icons',  default ='', help = 'Path to the directory with icons. Defaults to this script\'s directory ('+os.path.dirname(os.path.abspath(__file__))+')', action="store", metavar='')
+parser.add_argument('--sturl',  default ='', help = 'URL of a syncthing instance. Defaults to  "http://localhost:8384"', action="store", metavar='')
+parser.add_argument('--stfolder',  default ='', help = 'Name of the syncthing folder to monitor. Defaults to "default"', action="store", metavar='')
+
 args = parser.parse_args(sys.argv[1:])
-iconDir = os.path.dirname(__file__) if not args.icons else args.icons[0]
+iconDir = os.path.dirname(__file__) if not args.icons else args.icons
+STUrl = "http://localhost:8384" if not args.sturl else args.sturl
+STFolder = 'default' if not args.stfolder else args.stfolder
 
 GObject.threads_init()
 
