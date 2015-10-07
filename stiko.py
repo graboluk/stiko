@@ -23,7 +23,8 @@ class STDetective(threading.Thread):
         self.isOver = False 
 
         self.server_names = servers
-        self.server_ids =[]
+        self.server_ids = []
+        self.connected_server_ids = []
         self.server_completion = {}
         self.connections = {}
         self.pconnections = {}
@@ -67,16 +68,20 @@ class STDetective(threading.Thread):
 
         for a in self.config["devices"]:
             self.id_dict[a["deviceID"]] =  a['name']
-        print(self.config["folders"][0]["id"])
-        print(STFolder)
+
         if any([not (a in self.id_dict.values()) for a in self.server_names]):
             print("Some provided server names are wrong.")
+            Gtk.main_quit()
             sys.exit()
+
         if any([not (a in id_dict.keys()) for a in self.server_ids]):
             print("Some provided server ids are wrong.")
+            Gtk.main_quit()
             sys.exit()
+
         if all([not f["id"] == STFolder for f in self.config["folders"]]):
             print("No such folder reported by syncthing")
+            Gtk.main_quit()
             sys.exit()
 
         if not self.server_names and not self.server_ids: 
@@ -104,6 +109,8 @@ class STDetective(threading.Thread):
     def update_gui(self):
         GObject.idle_add(lambda :self.gui.update_icon(self)) 
         #while Gtk.events_pending(): Gtk.main_iteration_do(True)
+        GObject.idle_add(lambda :self.gui.menu.update_menu(self)) 
+
 
     def DlCheck(self):
         if DEBUG: print("DLCheck()")
@@ -131,6 +138,8 @@ class STDetective(threading.Thread):
         self.connections = self.request_connections()
         self.connected_ids = list(self.connections.keys())
         self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
+    
+        self.request_server_completion()
 
         self.update_ul_state()
 
@@ -280,6 +289,33 @@ class STDetective(threading.Thread):
         sys.exit()
 
 
+class StikoMenu(Gtk.Menu):
+    def __init__ (self):
+        super(StikoMenu,self).__init__()
+        self.is_visible = False
+
+        self.close_item = Gtk.MenuItem("Close App")
+        self.append(self.close_item)
+        self.close_item.connect_object("activate", lambda x : self.on_left_click(self), "Close App")
+        self.close_item.show()
+
+        self.connect("deactivate", self.deactivate_callback)     
+
+    def deactivate_callback(self, menu):
+        self.is_visible = False 
+
+    def update_menu(self, t):
+        self.updater(t)
+        if self.is_visible: GObject.timeout_add(1000, self.updater,t)
+
+    def updater(self,t):
+        info_str = ''
+        info_str += "\nDownloading "+str(t.b-t.a)+" file" +('s' if t.b-t.a>1 else '')
+        info_str += ' ('+str(round((t.d-t.c)/1000000,2))+'MB @ '
+        info_str += ('%.0f' % max(0,sum(list(t.DlSpeeds))/5000)) +'KB/s)'
+        self.close_item.set_label(info_str)
+
+        return self.is_visible
 
 
 class StikoGui(Gtk.StatusIcon):
@@ -299,14 +335,20 @@ class StikoGui(Gtk.StatusIcon):
 
         self.set_from_pixbuf(self.px_noServer)
         self.connect('activate', self.on_left_click)
-        #while Gtk.events_pending(): Gtk.main_iteration() 
+        self.connect('popup-menu', self.on_right_click)
         
         self.animation_counter = 1
         self.isAnimated = False   #for controlling animation only
 
-    def on_left_click(event, icon):
+        self.menu = StikoMenu()
+
+    def on_left_click(self,icon):
         icon.set_visible(False)
         Gtk.main_quit()
+
+    def on_right_click(self, data, event_button, event_time):
+        self.menu.popup(None,None,None,None,event_button,event_time)
+        self.menu.is_visible = True
    
     def update_icon(self,t):
         if DEBUG: print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
@@ -364,7 +406,7 @@ class StikoGui(Gtk.StatusIcon):
             return True
         else: 
             return False
-        
+
 
 
 parser = argparse.ArgumentParser(description = 'This is stiko, a systray icon for syncthing.',epilog='', usage='stiko.py [options]')
