@@ -58,8 +58,8 @@ class STDetective(threading.Thread):
         self.pDlCheckTime = self.DlCheckTime
         self.local_index_stamp =  self.DlCheckTime      
 
-        self.UlSpeeds = collections.deque(maxlen=3)
-        self.DlSpeeds = collections.deque(maxlen=3)
+        self.UlSpeeds = collections.deque(maxlen=2)
+        self.DlSpeeds = collections.deque(maxlen=2)
 
         self.QuickestServerID=''
         self.config = {}
@@ -157,8 +157,8 @@ class STDetective(threading.Thread):
 
         for a in  self.pconnections.keys():
             if a in self.connections.keys():
-                if not a in self.peer_ulspeeds.keys(): self.peer_ulspeeds[a] = collections.deque(maxlen=3)
-                if not a in self.peer_dlspeeds.keys(): self.peer_dlspeeds[a] = collections.deque(maxlen=3)
+                if not a in self.peer_ulspeeds.keys(): self.peer_ulspeeds[a] = collections.deque(maxlen=2)
+                if not a in self.peer_dlspeeds.keys(): self.peer_dlspeeds[a] = collections.deque(maxlen=2)
                 byte_delta = self.connections[a]["outBytesTotal"] - self.pconnections[a]["outBytesTotal"]
                 time = datetime.datetime.strptime(self.connections[a]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
                 ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
@@ -276,13 +276,13 @@ class STDetective(threading.Thread):
             be_quick = self.isDownloading or self.isUploading or any([ not t.server_completion[a] ==100 for a in self.connected_ids])
             events = self.request_events(next_event, 2 if be_quick else 65)
             for v in events:
-                if DEBUG: print(v["type"]+str(v["id"]))
+                print(v["type"]+str(v["id"]))
                 
                 # The "stamp" is heuristic, we are giving ourselves better chances 
                 # to report events picked-up in the event loop
                 if v["type"] == "StateChanged" and v["data"]["to"] == "scanning": 
                     self.isUploading = True
-                    #self.local_index_stamp = datetime.datetime.today()
+                    self.local_index_stamp = datetime.datetime.today()
                 if v["type"] == "LocalIndexUpdated": 
                     self.isUploading = True
                     self.local_index_stamp = datetime.datetime.today()
@@ -424,21 +424,21 @@ class StikoMenu(Gtk.Menu):
         if t.isDownloading:
             if not t.a==t.b:
                 info_str += green  +' '*3+ str(round((t.d-t.c)/1000000,2)) + 'MB'+span
-                info_str +=  black+ '\n '+str(t.b-t.a)+" file" +('s' if t.b-t.a>1 else '')+span
+                info_str +=  black+ '\n('+str(t.b-t.a)+" file" +('s' if t.b-t.a>1 else '')+span
                 #info_str += black + str(round((t.d-t.c)/1000000,2))+'MB @ '+span
-                info_str +=black + ' @ '+ ('%.0f' % max(0,sum(list(t.DlSpeeds))/5000)) +'KB/s'+span
+                info_str +=black + ' @ '+ ('%.0f' % max(0,sum(list(t.DlSpeeds))/5000)) +'KB/s)'+span
             else:
                 info_str += black +"\nChecking indices..."+span
 
         if t.isUploading:
             if not t.isDownloading: info_str +=black+'\n'+span
             if t.QuickestServerID:
-                info_str += green + "\nUL to "+t.id_dict[t.QuickestServerID] +span + '\n'
-                info_str += black +' '+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
+                info_str += green + "\nUL to "+t.id_dict[t.QuickestServerID] +span 
+                info_str += black +'\n('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
                 try:
-                    info_str += ' @ '+ ('%.0f' % max(0,sum(list(t.peer_ulspeeds[t.QuickestServerID]))/5000)) +'KB/s' +span
+                    info_str += ' @ '+ ('%.0f' % max(0,sum(list(t.peer_ulspeeds[t.QuickestServerID]))/5000)) +'KB/s)' +span
                 except:
-                    info_str += ''+span
+                    info_str += ')'+span
             else:
                 info_str += green+"\nUploading... \n "+span
     
