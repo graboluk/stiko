@@ -13,8 +13,6 @@ import threading
 import collections
 import webbrowser
 
-DEBUG=False
-
 # pango markup
 black = '<span foreground="black" font_family="monospace" size="large">'
 green = '<span foreground="green" font_family="monospace" size="large">'
@@ -109,23 +107,13 @@ class STDetective(threading.Thread):
         else:  
             self.server_ids = [a for a in self.id_dict.keys() if (self.id_dict[a] in self.server_names or a in self.server_ids)]
 
-    def get_base_state(self):
-        self.a,self.b,self.c,self.d = self.request_local_completion()
-
-        self.update_connection_data()
-        self.request_server_completion()
-
-        self.update_dl_state()
-        self.update_ul_state()
-
     def update_gui(self):
         GObject.idle_add(lambda :self.gui.update_icon(self)) 
-        #while Gtk.events_pending(): Gtk.main_iteration_do(True)
         GObject.idle_add(lambda :self.gui.menu.update_menu(self)) 
         GObject.idle_add(lambda :self.gui.peer_menu.update_menu(self)) 
 
     def DlCheck(self):
-        print("DLCheck()")
+        #~ print("DLCheck()")
         #if (datetime.datetime.today() -self.pDlCheckTime).total_seconds() <3: return
 
         self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
@@ -133,17 +121,15 @@ class STDetective(threading.Thread):
         self.pDlCheckTime = self.DlCheckTime
         self.DlCheckTime = datetime.datetime.today() 
         self.update_dl_state()
-        print((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
         self.DlSpeeds.append((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
 
     def UlCheck(self):
-        print("ULCheck()")
+        #~ print("ULCheck()")
 
         # this is a dirty hack - we give ourselves 7 seconds of hope 
         # that all servers will report their FolderCompletions. Otherwise 
         # the icon will go "OK" and only after FolderCompletions arrive will it go to "Sync" again
         if (datetime.datetime.today() - self.local_index_stamp).total_seconds() >7:
-            print('ok')
             self.update_ul_state()
 
     
@@ -215,7 +201,7 @@ class STDetective(threading.Thread):
             self.server_completion[s] =  self.request_remote_completion(s)
 
     def request_events(self,since, Timeout):
-        if DEBUG: print("request_events() "+str(Timeout))
+        #~ print("request_events() "+str(Timeout))
         if self.isOver: sys.exit()
         try:
             events = requests.get(STUrl+'/rest/events?since='+str(since), timeout=Timeout).json()
@@ -254,21 +240,21 @@ class STDetective(threading.Thread):
             self.isDownloading = False
 
     def run(self):
-        if DEBUG: print("run()")
+        #~ print("run()")
         
         self.basic_init()
         next_event=1
 
-        self.get_base_state()
+        self.a,self.b,self.c,self.d = self.request_local_completion()
         self.update_gui()
-
+    
         while not self.isOver:
             self.update_connection_data()
 
             self.DlCheck()
             self.UlCheck()
             self.update_gui()
-            print(self.isUploading)
+
             # the above calls should give correct answers as to whether 
             # we are uploading, etc. We use also the event loop, in order to 
             # 1) react to things quicker, 2) to know that something is happening 
@@ -277,7 +263,7 @@ class STDetective(threading.Thread):
             be_quick = self.isDownloading or self.isUploading or any([ not t.server_completion[a] ==100 for a in self.connected_ids])
             events = self.request_events(next_event, 2 if be_quick else 65)
             for v in events:
-                print(v["type"]+str(v["id"]))
+                #~ print(v["type"]+str(v["id"]))
                 
                 # The "stamp" is heuristic, we are giving ourselves better chances 
                 # to report events picked-up in the event loop
@@ -489,7 +475,7 @@ class StikoGui(Gtk.StatusIcon):
         self.menu.is_visible = True
    
     def update_icon(self,t):
-        if DEBUG: print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
+        #print([t.isSTAvailable, len(t.connected_server_ids), t.isDownloading, t.isUploading])
    
         info_str = ''
         if not t.isSTAvailable: 
@@ -576,15 +562,3 @@ t.start()
 
 Gtk.main()
 t.isOver = True
-
-#~ Menu
-#~ Servers
-#~ names of connected servers, green, blue, ordered by color
-#~ horiz line
-#~ tooltip info
-#~ horiz line
-#~ All peers -> Servers, other peers, blue green gray + speeds, perhaps alphabetically?
-#~ Quit stiko 
-
-
-
