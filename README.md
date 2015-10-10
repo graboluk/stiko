@@ -3,18 +3,28 @@
 ---
 
 ##### Installation and usage
-stiko is written in python 3 using  gtk3 so it should run on a wide variety of platforms. I personally run it on debian testing (openbox with tint2 panel). To install copy all the files to your folder of preference. If you wish you can copy the icons to a separate folder.
+stiko is written in python 3 using gtk3 and tested on openbox with tint2 panel from the most recent debian testing. It should run on a variety of other platforms.  To install copy all the files to your folder of preference. If you wish you can copy the icons to a separate folder.
 
-To run it, execute `python3 stiko.py` or make sure that the file stiko.py is executable and excute `stiko.py`
-
-Currently stiko.py assumes that the URL of syncthing is localhost:8384. The command line options are: `--icons ICON_DIR` (defaults to the same directory in which the file stiko.py is) and `--servers S`, where S is a space separated list of names of devices which should be treated as servers (defaults to all connected devices).
-
-Once stiko is running you can left-click it to quit. If you hover over the icon, useful info will appear - number of connected servers, current state (Up to Date, Uploading, Downloading, No Servers...), as well as download/upload progress:
+To run it, execute `python3 stiko.py` (command line options are described below). An icon should appear in your systray. If you hover over it, useful info will appear in a tooltip - number of connected servers, current state (Up to Date, Uploading, Downloading, No Servers...), as well as download/upload progress:
 
 ![Example screenshot](/../screenshots/screenshots/1.png?raw=true)
 ![Example screenshot](/../screenshots/screenshots/2.png?raw=true)
 ![Example screenshot](/../screenshots/screenshots/4.png?raw=true)
 ![Example screenshot](/../screenshots/screenshots/6.png?raw=true)
+
+Even more info is accessible via right-click menu:
+
+![Example screenshot](/../screenshots/screenshots/menu1.png?raw=true)
+![Example screenshot](/../screenshots/screenshots/menu2.png?raw=true)
+
+##### Command line options
+
+|||
+|---|---|
+| `--servers server1 server2 ...`| Space separated list of devices which should be treated as servers (defauts to all connected devices). Stiko will report "Up to Date" only if the local files are up to date and at least one of the servers is up to date |
+| `--icons ICON_FOLDER`| Folder containing the icons. Defaults to the directory containing `stiko.py`|
+| `--sturl SYNCTHING_URL`| Complete URL  of a syncthing instance. Defaults to `http://localhost:8384`|
+| `--stfolder FOLDER_NAME`| Name of the sycthing folder to monitor. Defaults to `default`|
 
 
 ##### Example
