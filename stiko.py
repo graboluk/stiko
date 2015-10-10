@@ -11,6 +11,7 @@ require_version("Gtk", "3.0")
 from gi.repository import Gtk, GObject, GdkPixbuf
 import threading
 import collections
+import webbrowser
 
 DEBUG=False
 
@@ -334,10 +335,10 @@ class PeerMenu(Gtk.Menu):
             try:
                 if t.server_completion[a] == 100: 
                     miss ='OK'
-                    info_str += blue + ' '*(4+ 10-len(t.id_dict[a]))+ miss + span 
+                    info_str += green + ' '*(4+ 10-len(t.id_dict[a]))+ miss + span 
                 else:
                     miss = str(round((t.d-t.server_completion[a]*t.d/100)/1000000,2))+'MB'
-                    info_str += green +' '*(4+ 10-len(t.id_dict[a])) +miss+span
+                    info_str += blue +' '*(4+ 10-len(t.id_dict[a])) +miss+span
                 ustr = ('%.0f' % max(0,sum(list(t.peer_ulspeeds[a]))/5000))
                 info_str += black +' '*(10-len(miss))+ ' '*(6-len(ustr))+ ustr +  ' / ' 
                 info_str += ('%.0f' % max(0,sum(list(t.peer_dlspeeds[a]))/5000))+span
@@ -383,7 +384,7 @@ class StikoMenu(Gtk.Menu):
         self.set_reserve_toggle_size(False)
 
         self.close_item.get_children()[0].set_markup(black+"Close stiko"+span)
-        self.all_peers_item.get_children()[0].set_markup(black+"All peers"+span)
+        self.all_peers_item.get_children()[0].set_markup(black+"Peer info"+span)
 
     def select_peer_menu_callback(self,x):
         self.gui.peer_menu.is_visible = True 
@@ -410,9 +411,9 @@ class StikoMenu(Gtk.Menu):
             for a in t.connected_server_ids:
                 info_str += black+  '\n '+t.id_dict[a][:10] +span
                 if t.server_completion[a] == 100: 
-                    info_str += blue + ' '*(6+ 10-len(t.id_dict[a]))+ 'OK'+ span 
+                    info_str += green + ' '*(6+ 10-len(t.id_dict[a]))+ 'OK'+ span 
                 else:
-                    info_str += green +' '*(4+ 10-len(t.id_dict[a])) +str(round((t.d-t.server_completion[a]*t.d/100)/1000000,2))+'MB'+span
+                    info_str += blue +' '*(4+ 10-len(t.id_dict[a])) +str(round((t.d-t.server_completion[a]*t.d/100)/1000000,2))+'MB'+span
     
 
         # Apparently this is te only way of accessing  the label of a GTk.MenuItem
@@ -423,7 +424,7 @@ class StikoMenu(Gtk.Menu):
         info_str =gray+ "Local Status"+span
         if t.isDownloading:
             if not t.a==t.b:
-                info_str += green  +' '*3+ str(round((t.d-t.c)/1000000,2)) + 'MB'+span
+                info_str += blue  +' '*3+ str(round((t.d-t.c)/1000000,2)) + 'MB'+span
                 info_str +=  black+ '\n('+str(t.b-t.a)+" file" +('s' if t.b-t.a>1 else '')+span
                 #info_str += black + str(round((t.d-t.c)/1000000,2))+'MB @ '+span
                 info_str +=black + ' @ '+ ('%.0f' % max(0,sum(list(t.DlSpeeds))/5000)) +'KB/s)'+span
@@ -433,17 +434,17 @@ class StikoMenu(Gtk.Menu):
         if t.isUploading:
             if not t.isDownloading: info_str +=black+'\n'+span
             if t.QuickestServerID:
-                info_str += green + "\nUL to "+t.id_dict[t.QuickestServerID] +span 
+                info_str += blue + "\nUL to "+t.id_dict[t.QuickestServerID] +span 
                 info_str += black +'\n('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
                 try:
                     info_str += ' @ '+ ('%.0f' % max(0,sum(list(t.peer_ulspeeds[t.QuickestServerID]))/5000)) +'KB/s)' +span
                 except:
                     info_str += ')'+span
             else:
-                info_str += green+"\nUploading... \n "+span
+                info_str += blue+"\nUploading... \n "+span
     
         if t.isSTAvailable and len(t.connected_server_ids) and not t.isDownloading and not t.isUploading:
-            info_str += blue+' '*5+"OK\n\n\n"+span
+            info_str += green+' '*5+"OK\n\n\n"+span
         info_str += '\n'*(3-info_str.count('\n'))
 
         self.progress_item.get_children()[0].set_markup(info_str)
@@ -481,7 +482,7 @@ class StikoGui(Gtk.StatusIcon):
 
     def on_left_click(self,icon):
         #icon.set_visible(False)
-        Gtk.main_quit()
+        webbrowser.open_new_tab(STUrl)
 
     def on_right_click(self, data, event_button, event_time):
         self.menu.popup(None,None,None,None,event_button,event_time)
@@ -539,7 +540,7 @@ class StikoGui(Gtk.StatusIcon):
         #~ print ([t.isDownloading, t.isUploading,t.isSTAvailable, len(t.connected_server_ids), self.isAnimated])
         if (t.isDownloading or t.isUploading) and t.isSTAvailable and t.connected_server_ids and self.isAnimated:
             self.set_from_pixbuf(self.px_sync[self.animation_counter])
-            self.animation_counter = (self.animation_counter + 1) % 2
+            self.animation_counter = (self.animation_counter +  1) % 2
             return True
         else: 
             return False
@@ -578,7 +579,7 @@ t.isOver = True
 
 #~ Menu
 #~ Servers
-#~ names of connected servers, blue, green, ordered by color
+#~ names of connected servers, green, blue, ordered by color
 #~ horiz line
 #~ tooltip info
 #~ horiz line
