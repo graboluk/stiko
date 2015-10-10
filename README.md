@@ -17,6 +17,8 @@ Even more info is accessible via right-click menu:
 ![Example screenshot](/../screenshots/screenshots/menu1.png?raw=true)
 ![Example screenshot](/../screenshots/screenshots/menu2.png?raw=true)
 
+Left-clicking will open a new brwoser tab with syncthing web gui.
+
 ##### Command line options
 
 |||
