@@ -3,7 +3,7 @@
 ---
 
 ##### Installation and usage
-stiko is written in python 3 using gtk3 and tested on openbox with tint2 panel from the most recent debian testing. It should run on a variety of other platforms.  To install copy all the files to your folder of preference. If you wish you can copy the icons to a separate folder.
+stiko is written in python 3 using gtk3 and tested on openbox with tint2 panel from debian testing. It should run on a variety of other platforms.  To install copy all the files to your folder of preference. In debian you will need, in addition to python 3,  packages `python3-gi` and `gir1.2-gtk-3.0`.
 
 To run it, execute `python3 stiko.py` (command line options are described below). An icon should appear in your systray. If you hover over it, useful info will appear in a tooltip - number of connected servers, current state (Up to Date, Uploading, Downloading, No Servers...), as well as download/upload progress:
 
