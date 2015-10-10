@@ -14,6 +14,17 @@ import collections
 
 DEBUG=False
 
+# pango markup
+black = '<span foreground="black" font_family="monospace" size="large">'
+green = '<span foreground="green" font_family="monospace" size="large">'
+gray = '<span foreground="gray" font_family="monospace" size="large">'
+blue = '<span foreground="blue" font_family="monospace" size="large">'
+red =  '<span foreground="red" font_family="monospace" size="large">'
+span  = '</span>'
+sgray = '<span foreground="gray" font_family="monospace" size="small">'
+
+
+
 class STDetective(threading.Thread):
     def __init__(self, gui, servers):
         super(STDetective, self).__init__()
@@ -24,8 +35,14 @@ class STDetective(threading.Thread):
 
         self.server_names = servers
         self.server_ids = []
+        self.connected_ids = []
         self.connected_server_ids = []
-        self.server_completion = {}
+
+        # server_completion really lists all peers. 
+        # We only get cached values for st so it's 
+        # not expensive to query for all of them
+        self.server_completion = {} 
+
         self.connections = {}
         self.pconnections = {}
         self.id_dict = {}
@@ -38,19 +55,21 @@ class STDetective(threading.Thread):
         self.isSTAvailable = False
 
         self.DlCheckTime = datetime.datetime.today()
-        self.UlCheckTime = self.DlCheckTime
         self.pDlCheckTime = self.DlCheckTime
-        self.pUlCheckTime = self.DlCheckTime
         self.local_index_stamp =  self.DlCheckTime      
 
-        self.UlSpeeds = collections.deque(maxlen=5)
-        self.DlSpeeds = collections.deque(maxlen=5)
+        self.UlSpeeds = collections.deque(maxlen=3)
+        self.DlSpeeds = collections.deque(maxlen=3)
 
         self.QuickestServerID=''
         self.config = {}
 
+        self.peer_ulspeeds = {}
+        self.peer_dlspeeds = {}
+        self.peer_completion = {}
+
     def basic_init(self):
-        # we add basic_init() (instead of calling everything from init()) 
+        # we add basic_init() (instead of calling everything from __init__()) 
         # because otherwise if the basic checks below fail gui is unresponsive
         # (because main_loop isn't working yet). This will be ran from self.run() 
    
@@ -89,18 +108,10 @@ class STDetective(threading.Thread):
         else:  
             self.server_ids = [a for a in self.id_dict.keys() if (self.id_dict[a] in self.server_names or a in self.server_ids)]
 
-
     def get_base_state(self):
         self.a,self.b,self.c,self.d = self.request_local_completion()
 
-        self.connections = self.request_connections()
-        self.connected_ids = list(self.connections.keys())
-        self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
-    
-        # the following call doesn't really belong here, but 
-        # the call afterwards can take long time, so better update gui now
-        self.update_gui()
-
+        self.update_connection_data()
         self.request_server_completion()
 
         self.update_dl_state()
@@ -110,49 +121,50 @@ class STDetective(threading.Thread):
         GObject.idle_add(lambda :self.gui.update_icon(self)) 
         #while Gtk.events_pending(): Gtk.main_iteration_do(True)
         GObject.idle_add(lambda :self.gui.menu.update_menu(self)) 
-
+        GObject.idle_add(lambda :self.gui.peer_menu.update_menu(self)) 
 
     def DlCheck(self):
-        if DEBUG: print("DLCheck()")
-        if (datetime.datetime.today() -self.pDlCheckTime).total_seconds() <3: return
+        print("DLCheck()")
+        #if (datetime.datetime.today() -self.pDlCheckTime).total_seconds() <3: return
 
         self.pa, self.pb,self.pc, self.pd =  self.a,self.b,self.c,self.d
         self.a,self.b,self.c,self.d= self.request_local_completion()
         self.pDlCheckTime = self.DlCheckTime
         self.DlCheckTime = datetime.datetime.today() 
         self.update_dl_state()
-
+        print((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
         self.DlSpeeds.append((self.c-self.pc)/(self.DlCheckTime-self.pDlCheckTime).total_seconds())
 
-
     def UlCheck(self):
-        if DEBUG: print("ULCheck()")
-        if (datetime.datetime.today() -self.pUlCheckTime).total_seconds() <3: return
+        print("ULCheck()")
 
         # this is a dirty hack - we give ourselves 7 seconds of hope 
         # that all servers will report their FolderCompletions. Otherwise 
         # the icon will go "OK" and only after FolderCompletions arrive will it go to "Sync" again
-        if (datetime.datetime.today() - self.local_index_stamp).total_seconds() <7:return
+        if (datetime.datetime.today() - self.local_index_stamp).total_seconds() >7:
+            print('ok')
+            self.update_ul_state()
 
+    
+    def update_connection_data(self):
         self.pconnections = self.connections 
         self.connections = self.request_connections()
+
         self.connected_ids = list(self.connections.keys())
         self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
-    
+
         self.request_server_completion()
 
-        self.update_ul_state()
-
-        self.pUlCheckTime = self.UlCheckTime
-        self.UlCheckTime = datetime.datetime.today() 
-    
-        if self.QuickestServerID in self.pconnections.keys() and self.QuickestServerID in self.connections.keys():
-            byte_delta = self.connections[self.QuickestServerID]["outBytesTotal"] - self.pconnections[self.QuickestServerID]["outBytesTotal"]
-            time = datetime.datetime.strptime(self.connections[self.QuickestServerID]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
-            ptime = datetime.datetime.strptime(self.pconnections[self.QuickestServerID]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
-            self.UlSpeeds.append(byte_delta/(time-ptime).total_seconds())
-            #~ print(byte_delta)
-            #~ print(self.UlSpeeds)
+        for a in  self.pconnections.keys():
+            if a in self.connections.keys():
+                if not a in self.peer_ulspeeds.keys(): self.peer_ulspeeds[a] = collections.deque(maxlen=3)
+                if not a in self.peer_dlspeeds.keys(): self.peer_dlspeeds[a] = collections.deque(maxlen=3)
+                byte_delta = self.connections[a]["outBytesTotal"] - self.pconnections[a]["outBytesTotal"]
+                time = datetime.datetime.strptime(self.connections[a]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
+                ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
+                self.peer_ulspeeds[a].append(byte_delta/(time-ptime).total_seconds())
+                byte_delta = self.connections[a]["inBytesTotal"] - self.pconnections[a]["inBytesTotal"]
+                self.peer_dlspeeds[a].append(byte_delta/(time-ptime).total_seconds())
 
     def request_config(self):
         if self.isOver: sys.exit()
@@ -198,7 +210,7 @@ class STDetective(threading.Thread):
             return 0
 
     def request_server_completion(self):
-        for s in self.connected_server_ids: 
+        for s in self.connected_ids: 
             self.server_completion[s] =  self.request_remote_completion(s)
 
     def request_events(self,since, Timeout):
@@ -210,17 +222,24 @@ class STDetective(threading.Thread):
             return events
         except:
             # there seems to be a bug in requests. As a workaround 
-            # we will just ignore error when Timeout is 2. If this is 
-            # genuine then it will be caught soon (in request_connections for example)
+            # we will just ignore error when Timeout is 2. If syncthing really is not
+            # accessible then it will be caught soon (in request_connections for example)
             if Timeout >3:
                 self.isSTAvailable = False
             return []
 
     def update_ul_state(self):
-        if all((not p == 100) for p in self.server_completion.values()): 
+
+        # this seems to be the only place where server_completion 
+        # should really mean that we look only at the servers
+        s = {}
+        for a in self.server_completion.keys(): 
+            if a in self.connected_server_ids: s[a] = self.server_completion[a] 
+
+        if all((not p == 100) for p in s.values()): 
             self.isUploading = True
             try:
-                self.QuickestServerID =max(self.server_completion.keys(), key = lambda x: self.server_completion[x])
+                self.QuickestServerID =max(s.keys(), key = lambda x: s[x])
             except: 
                 self.QuickestServerID=''
         else:
@@ -243,17 +262,19 @@ class STDetective(threading.Thread):
         self.update_gui()
 
         while not self.isOver:
+            self.update_connection_data()
+
             self.DlCheck()
-            self.update_gui()
             self.UlCheck()
             self.update_gui()
-
+            print(self.isUploading)
             # the above calls should give correct answers as to whether 
             # we are uploading, etc. We use also the event loop, in order to 
             # 1) react to things quicker, 2) to know that something is happening 
             # so that we have to run the calls above (request_events() is blocking)
-            
-            events = self.request_events(next_event, 2 if self.isDownloading or self.isUploading else 65)
+
+            be_quick = self.isDownloading or self.isUploading or any([ not t.server_completion[a] ==100 for a in self.connected_ids])
+            events = self.request_events(next_event, 2 if be_quick else 65)
             for v in events:
                 if DEBUG: print(v["type"]+str(v["id"]))
                 
@@ -261,7 +282,7 @@ class STDetective(threading.Thread):
                 # to report events picked-up in the event loop
                 if v["type"] == "StateChanged" and v["data"]["to"] == "scanning": 
                     self.isUploading = True
-                    self.local_index_stamp = datetime.datetime.today()
+                    #self.local_index_stamp = datetime.datetime.today()
                 if v["type"] == "LocalIndexUpdated": 
                     self.isUploading = True
                     self.local_index_stamp = datetime.datetime.today()
@@ -289,31 +310,146 @@ class STDetective(threading.Thread):
         sys.exit()
 
 
+class PeerMenu(Gtk.Menu):
+    def __init__ (self,gui):
+        super(PeerMenu,self).__init__()
+        self.set_reserve_toggle_size(False)
+
+        self.gui = gui
+        self.is_visible = False
+        self.peer_info = Gtk.MenuItem('')
+        info_str = gray+ " "*25+span
+        self.peer_info.get_children()[0].set_markup(info_str)
+        self.peer_info.set_sensitive(False)
+
+        self.append(self.peer_info)
+        self.peer_info.show()
+
+    def update_menu(self, t): 
+        all_str = gray + 'name          status        UL / DL'+span+sgray+' (KB/s)' +span
+        info_str = ''
+        for a in t.connected_ids: 
+            info_str = '\n'
+            info_str += black + t.id_dict[a][:10] + span
+            try:
+                if t.server_completion[a] == 100: 
+                    miss ='OK'
+                    info_str += blue + ' '*(4+ 10-len(t.id_dict[a]))+ miss + span 
+                else:
+                    miss = str(round((t.d-t.server_completion[a]*t.d/100)/1000000,2))+'MB'
+                    info_str += green +' '*(4+ 10-len(t.id_dict[a])) +miss+span
+                ustr = ('%.0f' % max(0,sum(list(t.peer_ulspeeds[a]))/5000))
+                info_str += black +' '*(10-len(miss))+ ' '*(6-len(ustr))+ ustr +  ' / ' 
+                info_str += ('%.0f' % max(0,sum(list(t.peer_dlspeeds[a]))/5000))+span
+            except: pass
+            all_str +=info_str
+
+        self.peer_info.get_children()[0].set_markup(all_str)
+
 class StikoMenu(Gtk.Menu):
-    def __init__ (self):
+    def __init__ (self,gui):
         super(StikoMenu,self).__init__()
+        self.gui = gui
         self.is_visible = False
 
-        self.close_item = Gtk.MenuItem("Close App")
-        self.append(self.close_item)
-        self.close_item.connect_object("activate", lambda x : self.on_left_click(self), "Close App")
-        self.close_item.show()
+        self.server_item = Gtk.MenuItem('\n\n\n\n\n\n\n\n\n\n\n')
+        self.sep = Gtk.SeparatorMenuItem()
+        self.progress_item = Gtk.MenuItem('')
+        self.sep2 = Gtk.SeparatorMenuItem()
+        self.all_peers_item = Gtk.MenuItem('')
+        self.close_item = Gtk.MenuItem('')
 
+        self.append(self.server_item)
+        self.append(self.sep)
+        self.append(self.progress_item)
+        self.append(self.sep2)
+        self.append(self.all_peers_item)
+        self.append(self.close_item)
+
+        self.all_peers_item.set_submenu(gui.peer_menu)
+        self.all_peers_item.connect_object("select", self.select_peer_menu_callback,None)
+        self.all_peers_item.connect_object("deselect", self.deselect_peer_menu_callback,None)
+
+        self.close_item.connect_object("activate", lambda x: Gtk.main_quit(),None)
+
+        self.server_item.show()
+        self.sep.show()
+        self.progress_item.show()
+        self.sep2.show()
+        self.all_peers_item.show()
+        self.close_item.show()
+    
         self.connect("deactivate", self.deactivate_callback)     
+        self.set_reserve_toggle_size(False)
+
+        self.close_item.get_children()[0].set_markup(black+"Close stiko"+span)
+        self.all_peers_item.get_children()[0].set_markup(black+"All peers"+span)
+
+    def select_peer_menu_callback(self,x):
+        self.gui.peer_menu.is_visible = True 
+
+    def deselect_peer_menu_callback(self,x):
+        self.gui.peer_menu.is_visible = False 
 
     def deactivate_callback(self, menu):
         self.is_visible = False 
 
     def update_menu(self, t):
         self.updater(t)
-        if self.is_visible: GObject.timeout_add(1000, self.updater,t)
+        #if self.is_visible: GObject.timeout_add(1000, self.updater,t)
 
     def updater(self,t):
-        info_str = ''
-        info_str += "\nDownloading "+str(t.b-t.a)+" file" +('s' if t.b-t.a>1 else '')
-        info_str += ' ('+str(round((t.d-t.c)/1000000,2))+'MB @ '
-        info_str += ('%.0f' % max(0,sum(list(t.DlSpeeds))/5000)) +'KB/s)'
-        self.close_item.set_label(info_str)
+        if not t.isSTAvailable:
+            info_str = red+"No contact with syncthing"+span
+
+        elif not t.connected_server_ids:
+            info_str = gray+"No servers"+span
+
+        else:
+            info_str =gray+  "Connected Servers ("+str(len(t.connected_server_ids))+'/'+str(len(t.server_ids))+')'+span
+            for a in t.connected_server_ids:
+                info_str += black+  '\n '+t.id_dict[a][:10] +span
+                if t.server_completion[a] == 100: 
+                    info_str += blue + ' '*(6+ 10-len(t.id_dict[a]))+ 'OK'+ span 
+                else:
+                    info_str += green +' '*(4+ 10-len(t.id_dict[a])) +str(round((t.d-t.server_completion[a]*t.d/100)/1000000,2))+'MB'+span
+    
+
+        # Apparently this is te only way of accessing  the label of a GTk.MenuItem
+        self.server_item.get_children()[0].set_markup(info_str)
+        self.server_item.set_sensitive(False)
+
+
+        info_str =gray+ "Local Status"+span
+        if t.isDownloading:
+            if not t.a==t.b:
+                info_str += green  +' '*3+ str(round((t.d-t.c)/1000000,2)) + 'MB'+span
+                info_str +=  black+ '\n '+str(t.b-t.a)+" file" +('s' if t.b-t.a>1 else '')+span
+                #info_str += black + str(round((t.d-t.c)/1000000,2))+'MB @ '+span
+                info_str +=black + ' @ '+ ('%.0f' % max(0,sum(list(t.DlSpeeds))/5000)) +'KB/s'+span
+            else:
+                info_str += black +"\nChecking indices..."+span
+
+        if t.isUploading:
+            if not t.isDownloading: info_str +=black+'\n'+span
+            if t.QuickestServerID:
+                info_str += green + "\nUL to "+t.id_dict[t.QuickestServerID] +span + '\n'
+                info_str += black +' '+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
+                try:
+                    info_str += ' @ '+ ('%.0f' % max(0,sum(list(t.peer_ulspeeds[t.QuickestServerID]))/5000)) +'KB/s' +span
+                except:
+                    info_str += ''+span
+            else:
+                info_str += green+"\nUploading... \n "+span
+    
+        if t.isSTAvailable and len(t.connected_server_ids) and not t.isDownloading and not t.isUploading:
+            info_str += blue+' '*5+"OK\n\n\n"+span
+        info_str += '\n'*(3-info_str.count('\n'))
+
+        self.progress_item.get_children()[0].set_markup(info_str)
+        self.progress_item.set_sensitive(False)
+
+
 
         return self.is_visible
 
@@ -340,10 +476,11 @@ class StikoGui(Gtk.StatusIcon):
         self.animation_counter = 1
         self.isAnimated = False   #for controlling animation only
 
-        self.menu = StikoMenu()
+        self.peer_menu = PeerMenu(self)
+        self.menu = StikoMenu(self)
 
     def on_left_click(self,icon):
-        icon.set_visible(False)
+        #icon.set_visible(False)
         Gtk.main_quit()
 
     def on_right_click(self, data, event_button, event_time):
@@ -378,7 +515,7 @@ class StikoGui(Gtk.StatusIcon):
                     info_str += "\nUploading to "+t.id_dict[t.QuickestServerID]
                     info_str += ' ('+str(round((t.d-t.server_completion[t.QuickestServerID]*t.d/100)/1000000,2))+'MB'
                     try:
-                        info_str += ' @ '+ ('%.0f' % max(0,sum(list(t.UlSpeeds))/5000)) +'KB/s)'
+                        info_str += ' @ '+ ('%.0f' % max(0,sum(list(t.peer_ulspeeds[t.QuickestServerID]))/5000)) +'KB/s)'
                     except:
                         info_str += ')'
                 else:
@@ -422,10 +559,31 @@ STFolder = 'default' if not args.stfolder else args.stfolder
 
 GObject.threads_init()
 
+
+#d=DataExchnage, gui =...(...,d)
 gui = StikoGui(iconDir)
 
 t = STDetective(gui,args.servers)
+
+# 
+# we make it a daemon because http requests are 
+# blocking, so otherwise we hae to wait for 
+# termination up to 60s (or whatever the syncthing 
+# ping interval is)
+t.daemon = True
 t.start()
 
 Gtk.main()
 t.isOver = True
+
+#~ Menu
+#~ Servers
+#~ names of connected servers, blue, green, ordered by color
+#~ horiz line
+#~ tooltip info
+#~ horiz line
+#~ All peers -> Servers, other peers, blue green gray + speeds, perhaps alphabetically?
+#~ Quit stiko 
+
+
+
