@@ -404,7 +404,7 @@ class StikoMenu(Gtk.Menu):
             info_str =gray+  "Connected Servers ("+str(len(t.connected_server_ids))+'/'+str(len(t.server_ids))+')'+span
             for a in t.connected_server_ids:
                 info_str += black+  '\n '+t.id_dict[a][:10] +span
-                if t.server_completion[a] == 100: 
+                if a in t.server_completion.keys() and t.server_completion[a] == 100: 
                     info_str += green + ' '*(6+ 10-len(t.id_dict[a]))+ 'OK'+ span 
                 else:
                     info_str += blue +' '*(4+ 10-len(t.id_dict[a])) +str(round((t.d-t.server_completion[a]*t.d/100)/1000000,2))+'MB'+span
