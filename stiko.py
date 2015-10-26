@@ -6,9 +6,11 @@ import sys
 import os
 import argparse
 import datetime
+
 from gi import require_version 
 require_version("Gtk", "3.0")
 from gi.repository import Gtk, GObject, GdkPixbuf
+
 import threading
 import collections
 import webbrowser
@@ -38,12 +40,17 @@ class STDetective(threading.Thread):
         self.connected_server_ids = []
 
         # server_completion really lists all peers. 
-        # We only get cached values for st so it's 
+        # We only get cached values from st so it's 
         # not expensive to query for all of them
         self.server_completion = {} 
 
+
+        # p as a prefix to a variable name means 
+        # that this is the previously checked value
         self.connections = {}
         self.pconnections = {}
+
+        #dictionary for translating device ids to syncthing names
         self.id_dict = {}
 
         # current and previous inSyncFiles, globalFiles, inSyncBytes, globalBytes
@@ -70,7 +77,7 @@ class STDetective(threading.Thread):
     def basic_init(self):
         # we add basic_init() (instead of calling everything from __init__()) 
         # because otherwise if the basic checks below fail gui is unresponsive
-        # (because main_loop isn't working yet). This will be ran from self.run() 
+        # (because main_loop wouldn't be working yet). This will be ran from self.run() 
    
         self.config = self.request_config()
 
@@ -127,7 +134,7 @@ class STDetective(threading.Thread):
         #~ print("ULCheck()")
 
         # this is a dirty hack - we give ourselves 7 seconds of hope 
-        # that all servers will report their FolderCompletions. Otherwise 
+        # that all servers will report their FolderCompletions less than 100. Otherwise 
         # the icon will go "OK" and only after FolderCompletions arrive will it go to "Sync" again
         if (datetime.datetime.today() - self.local_index_stamp).total_seconds() >7:
             self.update_ul_state()
@@ -147,8 +154,8 @@ class STDetective(threading.Thread):
                 if not a in self.peer_ulspeeds.keys(): self.peer_ulspeeds[a] = collections.deque(maxlen=2)
                 if not a in self.peer_dlspeeds.keys(): self.peer_dlspeeds[a] = collections.deque(maxlen=2)
                 byte_delta = self.connections[a]["outBytesTotal"] - self.pconnections[a]["outBytesTotal"]
-                time = datetime.datetime.strptime(self.connections[a]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
-                ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:-9], '%Y-%m-%dT%H:%M:%S.%f')
+                time = datetime.datetime.strptime(self.connections[a]["at"][:19], '%Y-%m-%dT%H:%M:%S')
+                ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:19], '%Y-%m-%dT%H:%M:%S')
                 self.peer_ulspeeds[a].append(byte_delta/(time-ptime).total_seconds())
                 byte_delta = self.connections[a]["inBytesTotal"] - self.pconnections[a]["inBytesTotal"]
                 self.peer_dlspeeds[a].append(byte_delta/(time-ptime).total_seconds())
@@ -218,7 +225,8 @@ class STDetective(threading.Thread):
     def update_ul_state(self):
 
         # this seems to be the only place where server_completion 
-        # should really mean that we look only at the servers
+        # should really mean that we look only at the servers,
+        # so s below is server_completion restricted to servers
         s = {}
         for a in self.server_completion.keys(): 
             if a in self.connected_server_ids: s[a] = self.server_completion[a] 
@@ -267,9 +275,9 @@ class STDetective(threading.Thread):
                 
                 # The "stamp" is heuristic, we are giving ourselves better chances 
                 # to report events picked-up in the event loop
-                if v["type"] == "StateChanged" and v["data"]["to"] == "scanning": 
-                    self.isUploading = True
-                    self.local_index_stamp = datetime.datetime.today()
+                #~ if v["type"] == "StateChanged" and v["data"]["to"] == "scanning": 
+                    #~ self.isUploading = True
+                    #~ self.local_index_stamp = datetime.datetime.today()
                 if v["type"] == "LocalIndexUpdated": 
                     self.isUploading = True
                     self.local_index_stamp = datetime.datetime.today()
@@ -404,8 +412,8 @@ class StikoMenu(Gtk.Menu):
 
         # Apparently this is te only way of accessing  the label of a GTk.MenuItem
         self.server_item.get_children()[0].set_markup(info_str)
+        
         self.server_item.set_sensitive(False)
-
 
         info_str =gray+ "Local Status"+span
         if t.isDownloading:
@@ -546,18 +554,17 @@ STFolder = 'default' if not args.stfolder else args.stfolder
 
 GObject.threads_init()
 
-
-#d=DataExchnage, gui =...(...,d)
 gui = StikoGui(iconDir)
 
 t = STDetective(gui,args.servers)
 
-# 
-# we make it a daemon because http requests are 
+
+# we make t a daemon because http requests are 
 # blocking, so otherwise we hae to wait for 
 # termination up to 60s (or whatever the syncthing 
 # ping interval is)
 t.daemon = True
+
 t.start()
 
 Gtk.main()
