@@ -406,9 +406,11 @@ class StikoMenu(Gtk.Menu):
                 info_str += black+  '\n '+t.id_dict[a][:10] +span
                 if a in t.server_completion.keys() and t.server_completion[a] == 100: 
                     info_str += green + ' '*(6+ 10-len(t.id_dict[a]))+ 'OK'+ span 
-                else:
+                elif a in t.server_completion.keys():
                     info_str += blue +' '*(4+ 10-len(t.id_dict[a])) +str(round((t.d-t.server_completion[a]*t.d/100)/1000000,2))+'MB'+span
-    
+                else:
+                    info_str += blue +' '*(4+ 10-len(t.id_dict[a])) +"..."+span
+        
 
         # Apparently this is te only way of accessing  the label of a GTk.MenuItem
         self.server_item.get_children()[0].set_markup(info_str)
