@@ -278,7 +278,7 @@ class STDetective(threading.Thread):
                 #~ if v["type"] == "StateChanged" and v["data"]["to"] == "scanning": 
                     #~ self.isUploading = True
                     #~ self.local_index_stamp = datetime.datetime.today()
-                if v["type"] == "LocalIndexUpdated": 
+                if v["type"] == "LocalIndexUpdated" and self.connected_server_ids: 
                     self.isUploading = True
                     self.local_index_stamp = datetime.datetime.today()
             
