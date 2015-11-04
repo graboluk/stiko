@@ -154,8 +154,8 @@ class STDetective(threading.Thread):
                 if not a in self.peer_ulspeeds.keys(): self.peer_ulspeeds[a] = collections.deque(maxlen=2)
                 if not a in self.peer_dlspeeds.keys(): self.peer_dlspeeds[a] = collections.deque(maxlen=2)
                 byte_delta = self.connections[a]["outBytesTotal"] - self.pconnections[a]["outBytesTotal"]
-                time = datetime.datetime.strptime(self.connections[a]["at"][:19], '%Y-%m-%dT%H:%M:%S')
-                ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:19], '%Y-%m-%dT%H:%M:%S')
+                time = datetime.datetime.strptime(self.connections[a]["at"][:24], '%Y-%m-%dT%H:%M:%S.%f')
+                ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:24], '%Y-%m-%dT%H:%M:%S.%f')
                 self.peer_ulspeeds[a].append(byte_delta/(time-ptime).total_seconds())
                 byte_delta = self.connections[a]["inBytesTotal"] - self.pconnections[a]["inBytesTotal"]
                 self.peer_dlspeeds[a].append(byte_delta/(time-ptime).total_seconds())
