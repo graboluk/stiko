@@ -230,8 +230,9 @@ class STDetective(threading.Thread):
         s = {}
         for a in self.server_completion.keys(): 
             if a in self.connected_server_ids: s[a] = self.server_completion[a] 
+        print(s)
 
-        if all((not p == 100) for p in s.values()): 
+        if s and all((not p == 100) for p in s.values()): 
             self.isUploading = True
             try:
                 self.QuickestServerID =max(s.keys(), key = lambda x: s[x])
