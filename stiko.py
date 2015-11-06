@@ -230,7 +230,7 @@ class STDetective(threading.Thread):
         s = {}
         for a in self.server_completion.keys(): 
             if a in self.connected_server_ids: s[a] = self.server_completion[a] 
-        print(s)
+        #print(s)
 
         if s and all((not p == 100) for p in s.values()): 
             self.isUploading = True
