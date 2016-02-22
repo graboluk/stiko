@@ -52,6 +52,7 @@ class STDetective(threading.Thread):
 
         #dictionary for translating device ids to syncthing names
         self.id_dict = {}
+        self.myID = 0
 
         # current and previous inSyncFiles, globalFiles, inSyncBytes, globalBytes
         self.a,self.b,self.c,self.d, self.pa,self.pb,self.pc,self.pd = [0,0,0,0,0,0,0,0]
@@ -80,6 +81,7 @@ class STDetective(threading.Thread):
         # (because main_loop wouldn't be working yet). This will be ran from self.run() 
    
         self.config = self.request_config()
+        self.myID = self.request_myid()
 
         # A thread-safe way to demand gui updates. We do it here 
         # because request_config() hopefully changed isSTAvailable to True
@@ -99,7 +101,7 @@ class STDetective(threading.Thread):
             Gtk.main_quit()
             sys.exit()
 
-        if any([not (a in id_dict.keys()) for a in self.server_ids]):
+        if any([not (a in self.id_dict.keys()) for a in self.server_ids]):
             print("Some provided server ids are wrong.")
             Gtk.main_quit()
             sys.exit()
@@ -144,7 +146,7 @@ class STDetective(threading.Thread):
         self.pconnections = self.connections 
         self.connections = self.request_connections()
 
-        self.connected_ids = list(self.connections.keys())
+        self.connected_ids = [ a for a in list(self.connections.keys()) if  self.connections[a]["connected"]]
         self.connected_server_ids = [s for s in self.server_ids if s in self.connected_ids]
 
         self.request_server_completion()
@@ -153,12 +155,20 @@ class STDetective(threading.Thread):
             if a in self.connections.keys():
                 if not a in self.peer_ulspeeds.keys(): self.peer_ulspeeds[a] = collections.deque(maxlen=2)
                 if not a in self.peer_dlspeeds.keys(): self.peer_dlspeeds[a] = collections.deque(maxlen=2)
-                byte_delta = self.connections[a]["outBytesTotal"] - self.pconnections[a]["outBytesTotal"]
-                time = datetime.datetime.strptime(self.connections[a]["at"][:24], '%Y-%m-%dT%H:%M:%S.%f')
-                ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:24], '%Y-%m-%dT%H:%M:%S.%f')
-                self.peer_ulspeeds[a].append(byte_delta/(time-ptime).total_seconds())
-                byte_delta = self.connections[a]["inBytesTotal"] - self.pconnections[a]["inBytesTotal"]
-                self.peer_dlspeeds[a].append(byte_delta/(time-ptime).total_seconds())
+                out_byte_delta = self.connections[a]["outBytesTotal"] - self.pconnections[a]["outBytesTotal"]
+                in_byte_delta = self.connections[a]["inBytesTotal"] - self.pconnections[a]["inBytesTotal"]
+
+                try: 
+                    time = datetime.datetime.strptime(self.connections[a]["at"][:24], '%Y-%m-%dT%H:%M:%S.%f')
+                    ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:24], '%Y-%m-%dT%H:%M:%S.%f')
+                except:
+                    #occasionally syncthing does not report the %f part
+                    time = datetime.datetime.strptime(self.connections[a]["at"][:19], '%Y-%m-%dT%H:%M:%S')
+                    ptime = datetime.datetime.strptime(self.pconnections[a]["at"][:19], '%Y-%m-%dT%H:%M:%S')
+
+                if not time == ptime: 
+                    self.peer_ulspeeds[a].append(out_byte_delta/(time-ptime).total_seconds())
+                    self.peer_dlspeeds[a].append(in_byte_delta/(time-ptime).total_seconds())
 
     def request_config(self):
         if self.isOver: sys.exit()
@@ -168,6 +178,16 @@ class STDetective(threading.Thread):
             return c
         except:
             #~ raise
+            self.isSTAvailable = False
+            return False
+
+    def request_myid(self):
+        if self.isOver: sys.exit()
+        try:
+            c = requests.get(STUrl+'/rest/system/status').json()
+            self.isSTAvailable = True
+            return c["myID"]
+        except:
             self.isSTAvailable = False
             return False
 
@@ -259,6 +279,8 @@ class STDetective(threading.Thread):
     
         while not self.isOver:
             self.update_connection_data()
+            #we do basic_init because perhaps new peers appeared
+            self.basic_init()
 
             self.DlCheck()
             self.UlCheck()
@@ -324,7 +346,10 @@ class PeerMenu(Gtk.Menu):
     def update_menu(self, t): 
         all_str = gray + 'name          status        UL / DL'+span+sgray+' (KB/s)' +span
         info_str = ''
-        for a in t.connected_ids: 
+        for a in t.connected_ids:
+            #print(a)
+            #print(t.myID)
+            if a == t.myID: continue
             info_str = '\n'
             info_str += black + t.id_dict[a][:10] + span
             try:

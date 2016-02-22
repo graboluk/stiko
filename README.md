@@ -1,9 +1,9 @@
-### **stiko** - a systray icon for [syncthing](https://github.com/syncthing/syncthing) with server support
+### **stiko** - systray icon for [syncthing](https://github.com/syncthing/syncthing) with server support
 
 ---
 
 ##### Installation and usage
-stiko is written in python 3 using gtk3 and tested on openbox with tint2 panel from debian testing. It should run on a variety of other platforms.  To install copy all the files to your folder of preference. In debian you will need the  packages `python3`, `python3-requests`, `python3-gi` and `gir1.2-gtk-3.0`.
+stiko is written in python 3 using gtk3 and tested on openbox with tint2 panel from debian jessie. It should run on a variety of other platforms.  To install copy all the files to your folder of preference. In debian you will need the  packages `python3`, `python3-requests`, `python3-gi` and `gir1.2-gtk-3.0`.
 
 To run it, execute `python3 stiko.py` (command line options are described below). An icon should appear in your systray. If you hover over it, useful info will appear in a tooltip - number of connected servers, current state (Up to Date, Uploading, Downloading, No Servers...), as well as download/upload progress:
 
@@ -26,7 +26,7 @@ Left-clicking will open a new brwoser tab with syncthing web gui.
 | `--servers server1 server2 ...`| Space separated list of devices which should be treated as servers (defauts to all connected devices). Stiko will report "Up to Date" only if the local files are up to date and at least one of the servers is up to date |
 | `--icons ICON_FOLDER`| Folder containing the icons. Defaults to the directory containing `stiko.py`|
 | `--sturl SYNCTHING_URL`| Complete URL  of a syncthing instance. Defaults to `http://localhost:8384`|
-| `--stfolder FOLDER_NAME`| Name of the sycthing folder to monitor. Defaults to `default`|
+| `--stfolder FOLDER_NAME`| Name of the sycthing folder to monitor. Defaults to `default`. Currently stiko works correctly only if one folder is present|
 
 
 ##### Example
